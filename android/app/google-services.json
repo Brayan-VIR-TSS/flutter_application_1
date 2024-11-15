@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "671779815647",
+    "project_id": "test2-bcbfe",
+    "storage_bucket": "test2-bcbfe.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671779815647:android:699369f6587e7e7b2c696a",
+        "android_client_info": {
+          "package_name": "com.brayab2.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvg0hpuh5qlgeixbnD_ml5p4WbMcc417M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671779815647:android:822fabd1a7c70c8d2c696a",
+        "android_client_info": {
+          "package_name": "com.brayan2.firebase"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvg0hpuh5qlgeixbnD_ml5p4WbMcc417M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
