@@ -28,5 +28,12 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+
+	<!-- Claves para permisos de ubicación -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Necesitamos tu ubicación para mostrar tu posición en el mapa.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Necesitamos tu ubicación para compartirla en tiempo real.</string>
 </dict>
 </plist>
+

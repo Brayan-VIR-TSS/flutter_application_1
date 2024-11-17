@@ -4,29 +4,33 @@ import 'package:connectivity_plus/connectivity_plus.dart'; // Paquete para la co
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'pages/login.dart'; // Asegúrate de tener la página de login
+import 'pages/create.dart'; // Asegúrate de tener la página de crear cuenta
+import 'pages/clients.dart'; // Página de clientes (transportista)
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mi App de GPS',
+      title: 'App de Transportista',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color.fromARGB(255, 58, 116, 183),
-        ),
-        useMaterial3: true,
+        primarySwatch: Colors.blue,
       ),
-      home: const SplashScreen(),
+      initialRoute: '/splash', // La ruta inicial
+      routes: {
+        '/splash': (context) => SplashScreen(),
+        '/login': (context) => LoginPage(),
+        '/create': (context) => RegisterPage(),
+        '/clients': (context) => ClientsPage(),
+      },
     );
   }
 }
@@ -52,7 +56,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   // Función para verificar la conexión a Internet
   void _checkConnectivity() async {
-    // `checkConnectivity()` ahora devuelve un Future<List<ConnectivityResult>>
+    // `checkConnectivity()` ahora devuelve un Future<List<ConnectivityResult> >
     List<ConnectivityResult> results = await _connectivity.checkConnectivity();
     // Accedemos al primer valor de la lista para saber el estado de la conectividad
     ConnectivityResult result =
@@ -110,8 +114,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   void dispose() {
-    _connectivitySubscription
-        .cancel(); // Cancelar la suscripción cuando ya no sea necesario
+    _connectivitySubscription.cancel(); // Cancelar la suscripción cuando ya no sea necesario
     super.dispose();
   }
 

@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
+import '../widgets/logout_button.dart'; // cerrar cuenta
 
 class ClientsPage extends StatefulWidget {
   @override
@@ -32,14 +33,17 @@ class _ClientsPageState extends State<ClientsPage> {
     transportistaId = _auth.currentUser?.uid ?? '';
   }
 
-  // Obtener la ubicación actual del transportista
-  Future<void> _getCurrentLocation() async {
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-    setState(() {
-      _currentLocation = LatLng(position.latitude, position.longitude);
-    });
-  }
+// Obtener la ubicación actual del transportista
+Future<void> _getCurrentLocation() async {
+  Position position = await Geolocator.getCurrentPosition(
+    locationSettings: LocationSettings(
+      accuracy: LocationAccuracy.high,
+    ),
+  );
+  setState(() {
+    _currentLocation = LatLng(position.latitude, position.longitude);
+  });
+}
 
   // Función para mostrar alerta antes de comenzar a compartir la ubicación
   void _showLocationAlert() {
@@ -177,6 +181,9 @@ class _ClientsPageState extends State<ClientsPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Panel de Transportista'),
+        actions: [
+          LogoutButton(), // Botón de cerrar sesión
+        ],
       ),
       body: Column(
         children: [
