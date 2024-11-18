@@ -4,7 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
-import '../widgets/logout_button.dart'; // cerrar cuenta
+import '../widgets/logout_button.dart'; // Cerrar cuenta
 
 class ClientsPage extends StatefulWidget {
   @override
@@ -19,6 +19,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String transportistaId;
+  late String tripId; // ID del recorrido
 
   // Lista para guardar el historial de ubicaciones durante el recorrido
   List<LatLng> tripLocations = [];
@@ -33,17 +34,19 @@ class _ClientsPageState extends State<ClientsPage> {
     transportistaId = _auth.currentUser?.uid ?? '';
   }
 
-// Obtener la ubicación actual del transportista
-Future<void> _getCurrentLocation() async {
-  Position position = await Geolocator.getCurrentPosition(
-    locationSettings: LocationSettings(
-      accuracy: LocationAccuracy.high,
-    ),
-  );
-  setState(() {
-    _currentLocation = LatLng(position.latitude, position.longitude);
-  });
-}
+  // Obtener la ubicación actual del transportista
+  Future<void> _getCurrentLocation() async {
+    Position position = await Geolocator.getCurrentPosition(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
+    print(
+        "Ubicación actual: ${position.latitude}, ${position.longitude}"); // Verifica si se obtiene la ubicación
+    setState(() {
+      _currentLocation = LatLng(position.latitude, position.longitude);
+    });
+  }
 
   // Función para mostrar alerta antes de comenzar a compartir la ubicación
   void _showLocationAlert() {
@@ -82,9 +85,12 @@ Future<void> _getCurrentLocation() async {
       tripLocations = []; // Inicializamos el historial de ubicaciones
     });
 
+    // Crear un ID único para el recorrido
+    tripId = FirebaseFirestore.instance.collection('recorridos').doc().id;
+
     // Inicia la actualización de ubicación en tiempo real en Firestore
     if (_currentLocation != null) {
-      FirebaseFirestore.instance.collection('recorridos').add({
+      FirebaseFirestore.instance.collection('recorridos').doc(tripId).set({
         'transportistaId': transportistaId,
         'locations': [
           {
@@ -97,6 +103,7 @@ Future<void> _getCurrentLocation() async {
         'isSharing': true, // Marca que está compartiendo la ubicación
         'lastUpdated': Timestamp.now(),
       });
+
       // Actualizar el marcador en el mapa
       _markers.add(Marker(
         markerId: MarkerId('transportista'),
@@ -119,17 +126,9 @@ Future<void> _getCurrentLocation() async {
     });
 
     // Detener la actualización de la ubicación en Firestore
-    FirebaseFirestore.instance
-        .collection('recorridos')
-        .where('transportistaId', isEqualTo: transportistaId)
-        .get()
-        .then((snapshot) {
-      snapshot.docs.forEach((doc) {
-        FirebaseFirestore.instance.collection('recorridos').doc(doc.id).update({
-          'isSharing': false, // Deja de compartir la ubicación
-          'tripEnd': Timestamp.now(), // Guardamos el tiempo de finalización
-        });
-      });
+    FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
+      'isSharing': false, // Deja de compartir la ubicación
+      'tripEnd': Timestamp.now(), // Guardamos el tiempo de finalización
     });
 
     setState(() {
@@ -146,26 +145,14 @@ Future<void> _getCurrentLocation() async {
         tripLocations.add(_currentLocation!);
 
         // Actualizar la ubicación en Firestore en tiempo real en la colección 'recorridos'
-        FirebaseFirestore.instance
-            .collection('recorridos')
-            .where('transportistaId', isEqualTo: transportistaId)
-            .get()
-            .then((snapshot) {
-          snapshot.docs.forEach((doc) {
-            // Aquí actualizamos el documento del recorrido
-            FirebaseFirestore.instance
-                .collection('recorridos')
-                .doc(doc.id)
-                .update({
-              'locations': FieldValue.arrayUnion([
-                {
-                  'latitude': _currentLocation?.latitude,
-                  'longitude': _currentLocation?.longitude,
-                }
-              ]),
-              'lastUpdated': Timestamp.now(),
-            });
-          });
+        FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
+          'locations': FieldValue.arrayUnion([
+            {
+              'latitude': _currentLocation?.latitude,
+              'longitude': _currentLocation?.longitude,
+            }
+          ]),
+          'lastUpdated': Timestamp.now(),
         });
       });
     }
@@ -192,11 +179,12 @@ Future<void> _getCurrentLocation() async {
                 ? Center(child: CircularProgressIndicator())
                 : GoogleMap(
                     initialCameraPosition: CameraPosition(
-                      target: _currentLocation!,
+                      target: _currentLocation ?? LatLng(0, 0),
                       zoom: 14,
                     ),
                     onMapCreated: (GoogleMapController controller) {
                       mapController = controller;
+                      print("Mapa creado");
                     },
                     markers: _markers,
                     myLocationEnabled: true,
