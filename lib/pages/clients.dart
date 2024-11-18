@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
 import '../widgets/logout_button.dart'; // Cerrar cuenta
+import 'package:permission_handler/permission_handler.dart';
 
 class ClientsPage extends StatefulWidget {
   @override
@@ -32,6 +33,50 @@ class _ClientsPageState extends State<ClientsPage> {
     super.initState();
     _getCurrentLocation();
     transportistaId = _auth.currentUser?.uid ?? '';
+  }
+
+  // Mostrar el diálogo de permiso de ubicación
+  void _showLocationPermissionDialog() async {
+    // Primero, verificamos si el permiso de ubicación está concedido
+    PermissionStatus permissionStatus = await Permission.location.status;
+    if (!permissionStatus.isGranted) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('Permiso de Ubicación Necesario'),
+            content: Text(
+                'Para que esta aplicación funcione correctamente, necesitamos acceso a tu ubicación. Esto es necesario para poder compartir tu ubicación con los usuarios y realizar las funciones de GPS.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Cerrar el diálogo sin hacer nada
+                },
+                child: Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  // Intentar obtener permiso
+                  PermissionStatus status = await Permission.location.request();
+                  if (status.isGranted) {
+                    Navigator.pop(context); // Cerrar el diálogo
+                    _getCurrentLocation(); // Obtener la ubicación
+                  } else {
+                    Navigator.pop(
+                        context); // Cerrar el diálogo si el permiso no se concede
+                    print("Permiso de ubicación denegado.");
+                  }
+                },
+                child: Text('Aceptar'),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // Si ya se ha concedido el permiso, obtenemos la ubicación
+      _getCurrentLocation();
+    }
   }
 
   // Obtener la ubicación actual del transportista
