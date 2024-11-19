@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
 import '../widgets/logout_button.dart'; // Cerrar cuenta
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
+
 
 class ClientsPage extends StatefulWidget {
   @override
@@ -21,6 +23,8 @@ class _ClientsPageState extends State<ClientsPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String transportistaId;
   late String tripId; // ID del recorrido
+  Timer? _locationUpdateTimer;
+
 
   // Lista para guardar el historial de ubicaciones durante el recorrido
   List<LatLng> tripLocations = [];
@@ -159,9 +163,13 @@ class _ClientsPageState extends State<ClientsPage> {
       // Actualizar el mapa
       if (mapController != null) {
         mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_currentLocation!, 14));
+            ?.animateCamera(CameraUpdate.newLatLngZoom(_currentLocation!, 20));
       }
     }
+    // Iniciar la actualización de ubicación cada 5 segundos
+  _locationUpdateTimer = Timer.periodic(Duration(seconds: 15), (timer) {
+    _updateTripLocation();
+  });
   }
 
   // Función para finalizar el recorrido (dejar de compartir ubicación)
@@ -169,6 +177,10 @@ class _ClientsPageState extends State<ClientsPage> {
     setState(() {
       isOnTrip = false;
     });
+
+    // Detener el Timer
+  _locationUpdateTimer?.cancel();
+  _locationUpdateTimer = null;
 
     // Detener la actualización de la ubicación en Firestore
     FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
@@ -183,25 +195,43 @@ class _ClientsPageState extends State<ClientsPage> {
   }
 
   // Función para actualizar el historial de ubicaciones en tiempo real
-  void _updateTripLocation() {
-    if (isOnTrip && _currentLocation != null) {
-      setState(() {
-        // Añadir la nueva ubicación al historial
-        tripLocations.add(_currentLocation!);
+  void _updateTripLocation() async {
+  if (isOnTrip) {
+    // Obtener la ubicación actual
+    Position position = await Geolocator.getCurrentPosition(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
 
-        // Actualizar la ubicación en Firestore en tiempo real en la colección 'recorridos'
-        FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
-          'locations': FieldValue.arrayUnion([
-            {
-              'latitude': _currentLocation?.latitude,
-              'longitude': _currentLocation?.longitude,
-            }
-          ]),
-          'lastUpdated': Timestamp.now(),
-        });
-      });
-    }
+    LatLng newLocation = LatLng(position.latitude, position.longitude);
+
+    setState(() {
+      _currentLocation = newLocation;
+
+      // Añadir la nueva ubicación al historial
+      tripLocations.add(newLocation);
+
+      // Actualizar el marcador en el mapa
+      _markers.removeWhere((marker) => marker.markerId.value == 'transportista');
+      _markers.add(Marker(
+        markerId: MarkerId('transportista'),
+        position: newLocation,
+        infoWindow: InfoWindow(title: "Tu ubicación"),
+        icon: BitmapDescriptor.defaultMarker,
+      ));
+    });
+
+    // Actualizar la ubicación en Firestore
+    FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
+      'locations': FieldValue.arrayUnion([
+        {'latitude': newLocation.latitude, 'longitude': newLocation.longitude}
+      ]),
+      'lastUpdated': Timestamp.now(),
+    });
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
