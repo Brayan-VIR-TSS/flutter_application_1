@@ -28,6 +28,8 @@ class _UserPageState extends State<UserPage> {
   // API Key de Google Maps
   final String _googleApiKey = "AIzaSyCeuj3D-wjMEv8kNXjb34HcTWfj85VT3o0";
 
+  Set<Marker> transportistaMarkers = {}; // Marcadores para transportistas
+
   @override
   void initState() {
     super.initState();
@@ -200,13 +202,19 @@ class _UserPageState extends State<UserPage> {
     return markers;
   }
 
+       // Función para cerrar sesión
+  void _logout() async {
+    await FirebaseAuth.instance.signOut();
+    Navigator.pushReplacementNamed(context, '/login'); // Redirigir al login después de cerrar sesión
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Usuarios - Transportistas Activos'),
         actions: [
-          LogoutButton(), // Botón de cerrar sesión
+          LogoutButton(onLogout: _logout), // Botón de cerrar sesión
         ],
       ),
       body: _isLoading
@@ -219,6 +227,8 @@ class _UserPageState extends State<UserPage> {
                 }
 
                 var transportistas = snapshot.data!.docs;
+
+                // Crear un conjunto de marcadores
                 Set<Marker> transportistaMarkers = {};
 
                 // Iterar sobre los transportistas y agregar los marcadores

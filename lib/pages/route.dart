@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/logout_button.dart'; // cerrar cuenta
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RoutePage extends StatefulWidget {
   final String transportistaId;
@@ -73,14 +74,13 @@ class _RoutePageState extends State<RoutePage> {
     }
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Ruta del Transportista'),
-        actions: [
-          LogoutButton(), // Botón de cerrar sesión
-        ],
       ),
       body: _hasError
           ? Center(child: Text("Hubo un error al cargar la ruta."))

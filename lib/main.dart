@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'pages/login.dart'; // Asegúrate de tener la página de login
 import 'pages/create.dart'; // Asegúrate de tener la página de crear cuenta
 import 'pages/clients.dart'; // Página de clientes (transportista)
+import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth
 
 
 void main() async {
@@ -56,20 +57,30 @@ class _SplashScreenState extends State<SplashScreen> {
 
   // Función para verificar la conexión a Internet
   void _checkConnectivity() async {
-    // `checkConnectivity()` ahora devuelve un Future<List<ConnectivityResult> >
     List<ConnectivityResult> results = await _connectivity.checkConnectivity();
-    // Accedemos al primer valor de la lista para saber el estado de la conectividad
     ConnectivityResult result =
         results.isNotEmpty ? results.first : ConnectivityResult.none;
 
     if (result == ConnectivityResult.none) {
       _showNoInternetDialog();
     } else {
+      // Verificar si el usuario ya está autenticado
+      _checkAuthentication();
+    }
+  }
+
+  // Función para verificar la autenticación
+  void _checkAuthentication() async {
+    User? user = FirebaseAuth.instance.currentUser; // Verifica el usuario autenticado
+    if (user != null) {
+      // El usuario está autenticado, redirigir a ClientsPage
       Future.delayed(const Duration(seconds: 2), () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => LoginPage()),
-        );
+        Navigator.pushReplacementNamed(context, '/clients');
+      });
+    } else {
+      // El usuario no está autenticado, redirigir a LoginPage
+      Future.delayed(const Duration(seconds: 2), () {
+        Navigator.pushReplacementNamed(context, '/login');
       });
     }
   }

@@ -5,8 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
 import '../widgets/logout_button.dart'; // Cerrar cuenta
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
+import 'dart:math';
+import 'login.dart';
 
 
 class ClientsPage extends StatefulWidget {
@@ -19,7 +20,7 @@ class _ClientsPageState extends State<ClientsPage> {
   LatLng? _currentLocation;
   bool isOnTrip = false; // Indica si el transportista está en un recorrido
   Set<Marker> _markers = {}; // Marcadores para el mapa
-
+  
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String transportistaId;
   late String tripId; // ID del recorrido
@@ -33,54 +34,23 @@ class _ClientsPageState extends State<ClientsPage> {
   late Timestamp tripStartTime;
 
   @override
+void dispose() {
+  // Finaliza el recorrido si la aplicación se cierra
+  if (isOnTrip) {
+    _endTrip();
+  }
+
+  // Cancela cualquier timer activo
+  _locationUpdateTimer?.cancel();
+  super.dispose();
+}
+
+
+  @override
   void initState() {
     super.initState();
     _getCurrentLocation();
     transportistaId = _auth.currentUser?.uid ?? '';
-  }
-
-  // Mostrar el diálogo de permiso de ubicación
-  void _showLocationPermissionDialog() async {
-    // Primero, verificamos si el permiso de ubicación está concedido
-    PermissionStatus permissionStatus = await Permission.location.status;
-    if (!permissionStatus.isGranted) {
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Text('Permiso de Ubicación Necesario'),
-            content: Text(
-                'Para que esta aplicación funcione correctamente, necesitamos acceso a tu ubicación. Esto es necesario para poder compartir tu ubicación con los usuarios y realizar las funciones de GPS.'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context); // Cerrar el diálogo sin hacer nada
-                },
-                child: Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  // Intentar obtener permiso
-                  PermissionStatus status = await Permission.location.request();
-                  if (status.isGranted) {
-                    Navigator.pop(context); // Cerrar el diálogo
-                    _getCurrentLocation(); // Obtener la ubicación
-                  } else {
-                    Navigator.pop(
-                        context); // Cerrar el diálogo si el permiso no se concede
-                    print("Permiso de ubicación denegado.");
-                  }
-                },
-                child: Text('Aceptar'),
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      // Si ya se ha concedido el permiso, obtenemos la ubicación
-      _getCurrentLocation();
-    }
   }
 
   // Obtener la ubicación actual del transportista
@@ -167,7 +137,7 @@ class _ClientsPageState extends State<ClientsPage> {
       }
     }
     // Iniciar la actualización de ubicación cada 5 segundos
-  _locationUpdateTimer = Timer.periodic(Duration(seconds: 15), (timer) {
+  _locationUpdateTimer = Timer.periodic(Duration(seconds: 20), (timer) {
     _updateTripLocation();
   });
   }
@@ -232,6 +202,63 @@ class _ClientsPageState extends State<ClientsPage> {
   }
 }
 
+// Función para calcular la distancia entre dos coordenadas (en metros)
+  double _getDistance(LatLng start, LatLng end) {
+    final double latitude1 = start.latitude; // Cambié 'φ1' por 'latitude1'
+    final double longitude1 = start.longitude; // Cambié 'λ1' por 'longitude1'
+    final double latitude2 = end.latitude; // Cambié 'φ2' por 'latitude2'
+    final double longitude2 = end.longitude; // Cambié 'λ2' por 'longitude2'
+
+    const double R = 6371e3; // Radio de la Tierra en metros
+
+    final double lat1 = latitude1 * pi / 180; // Convertir a radianes
+    final double lat2 = latitude2 * pi / 180; // Convertir a radianes
+    final double deltaLat =
+        (latitude2 - latitude1) * pi / 180; // Diferencia en latitudes
+    final double deltaLon =
+        (longitude2 - longitude1) * pi / 180; // Diferencia en longitudes
+
+    final double a = (sin(deltaLat / 2) * sin(deltaLat / 2)) +
+        (cos(lat1) *
+            cos(lat2) *
+            sin(deltaLon / 2) *
+            sin(deltaLon / 2)); // Fórmula Haversine
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a)); // Fórmula Haversine
+
+    return R * c; // Distancia en metros
+  }
+
+  void _logout() async {
+    if (isOnTrip) {
+      // Mostrar advertencia si intenta cerrar sesión mientras está en un recorrido
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('No puedes cerrar sesión'),
+            content: Text(
+                'Debes finalizar el recorrido antes de cerrar tu cuenta.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Cierra el diálogo
+                },
+                child: Text('Aceptar'),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // Cerrar sesión y redirigir al login
+      await _auth.signOut();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginPage()), // Redirige al LoginPage
+      );
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -239,14 +266,16 @@ class _ClientsPageState extends State<ClientsPage> {
     if (isOnTrip) {
       _updateTripLocation();
     }
-
     return Scaffold(
       appBar: AppBar(
         title: Text('Panel de Transportista'),
         actions: [
-          LogoutButton(), // Botón de cerrar sesión
-        ],
-      ),
+          IconButton(
+            icon: Icon(Icons.exit_to_app),
+            onPressed: _logout,  // Llama al método de logout
+        ),
+      ],
+    ),
       body: Column(
         children: [
           Expanded(
