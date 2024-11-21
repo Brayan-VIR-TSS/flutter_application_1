@@ -9,7 +9,6 @@ import 'dart:async';
 import 'dart:math';
 import 'login.dart';
 
-
 class ClientsPage extends StatefulWidget {
   @override
   _ClientsPageState createState() => _ClientsPageState();
@@ -20,12 +19,11 @@ class _ClientsPageState extends State<ClientsPage> {
   LatLng? _currentLocation;
   bool isOnTrip = false; // Indica si el transportista está en un recorrido
   Set<Marker> _markers = {}; // Marcadores para el mapa
-  
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String transportistaId;
   late String tripId; // ID del recorrido
   Timer? _locationUpdateTimer;
-
 
   // Lista para guardar el historial de ubicaciones durante el recorrido
   List<LatLng> tripLocations = [];
@@ -33,24 +31,31 @@ class _ClientsPageState extends State<ClientsPage> {
   // Variable para registrar la hora de inicio del recorrido
   late Timestamp tripStartTime;
 
+  // Variables para manejar el control de tiempo y distancia
+  LatLng? lastLocation; // Declara lastLocation como LatLng?
+  DateTime? lastUpdateTime; // Declara lastUpdateTime como DateTime?
+
+  final int moveThreshold = 5; // Distancia mínima para enviar (en metros)
+  final int timeThreshold = 30; // Intervalo de tiempo (en segundos)
+
   @override
-void dispose() {
-  // Finaliza el recorrido si la aplicación se cierra
-  if (isOnTrip) {
-    _endTrip();
+  void dispose() {
+    // Finaliza el recorrido si la aplicación se cierra
+    if (isOnTrip) {
+      _endTrip();
+    }
+
+    // Cancela cualquier timer activo
+    _locationUpdateTimer?.cancel();
+    super.dispose();
   }
-
-  // Cancela cualquier timer activo
-  _locationUpdateTimer?.cancel();
-  super.dispose();
-}
-
 
   @override
   void initState() {
     super.initState();
     _getCurrentLocation();
     transportistaId = _auth.currentUser?.uid ?? '';
+    _checkIfOnTrip(); // Verificar si ya hay un recorrido en curso al iniciar la app
   }
 
   // Obtener la ubicación actual del transportista
@@ -65,6 +70,26 @@ void dispose() {
     setState(() {
       _currentLocation = LatLng(position.latitude, position.longitude);
     });
+  }
+
+  // Verificar si ya hay un recorrido en curso
+  Future<void> _checkIfOnTrip() async {
+    // Consultar el recorrido en Firestore
+    QuerySnapshot snapshot = await FirebaseFirestore.instance
+        .collection('recorridos')
+        .where('transportistaId', isEqualTo: transportistaId)
+        .where('isSharing', isEqualTo: true) // Solo busca recorridos activos
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      // Si hay un recorrido activo
+      DocumentSnapshot doc = snapshot.docs.first;
+      setState(() {
+        tripId = doc.id;
+        isOnTrip = true;
+        tripStartTime = doc['tripStart'];
+      });
+    }
   }
 
   // Función para mostrar alerta antes de comenzar a compartir la ubicación
@@ -110,7 +135,7 @@ void dispose() {
     // Inicia la actualización de ubicación en tiempo real en Firestore
     if (_currentLocation != null) {
       FirebaseFirestore.instance.collection('recorridos').doc(tripId).set({
-        'transportistaId': transportistaId,
+        'transportistaId': transportistaId, //Para saber quien es el conductor
         'locations': [
           {
             'latitude': _currentLocation?.latitude,
@@ -136,10 +161,10 @@ void dispose() {
             ?.animateCamera(CameraUpdate.newLatLngZoom(_currentLocation!, 20));
       }
     }
-    // Iniciar la actualización de ubicación cada 5 segundos
-  _locationUpdateTimer = Timer.periodic(Duration(seconds: 20), (timer) {
-    _updateTripLocation();
-  });
+    // Iniciar la actualización de ubicación cada 30 segundos
+    _locationUpdateTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      _updateTripLocation();
+    });
   }
 
   // Función para finalizar el recorrido (dejar de compartir ubicación)
@@ -149,8 +174,8 @@ void dispose() {
     });
 
     // Detener el Timer
-  _locationUpdateTimer?.cancel();
-  _locationUpdateTimer = null;
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = null;
 
     // Detener la actualización de la ubicación en Firestore
     FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
@@ -166,64 +191,89 @@ void dispose() {
 
   // Función para actualizar el historial de ubicaciones en tiempo real
   void _updateTripLocation() async {
-  if (isOnTrip) {
-    // Obtener la ubicación actual
-    Position position = await Geolocator.getCurrentPosition(
-      locationSettings: LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
-    );
+    if (isOnTrip) {
+      // Obtener la ubicación actual
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
 
-    LatLng newLocation = LatLng(position.latitude, position.longitude);
+      LatLng newLocation = LatLng(position.latitude, position.longitude);
 
-    setState(() {
-      _currentLocation = newLocation;
+      // Verifica si hay movimiento
+      // Si la ubicación ha cambiado más de 5 metros o ha pasado 30 segundos
+      if (_shouldUpdateLocation(newLocation)) {
+        setState(() {
+          _currentLocation = newLocation;
+          tripLocations.add(newLocation);
 
-      // Añadir la nueva ubicación al historial
-      tripLocations.add(newLocation);
+          // Actualizar el marcador en el mapa
+          _markers.removeWhere(
+              (marker) => marker.markerId.value == 'transportista');
+          _markers.add(Marker(
+            markerId: MarkerId('transportista'),
+            position: newLocation,
+            infoWindow: InfoWindow(title: "Tu ubicación"),
+            //icon: BitmapDescriptor.defaultMarker,
+          ));
 
-      // Actualizar el marcador en el mapa
-      _markers.removeWhere((marker) => marker.markerId.value == 'transportista');
-      _markers.add(Marker(
-        markerId: MarkerId('transportista'),
-        position: newLocation,
-        infoWindow: InfoWindow(title: "Tu ubicación"),
-        icon: BitmapDescriptor.defaultMarker,
-      ));
-    });
+          // Actualiza la cámara para seguir al transportista
+          if (mapController != null) {
+            mapController
+                ?.animateCamera(CameraUpdate.newLatLngZoom(newLocation, 16));
+          }
+        });
 
-    // Actualizar la ubicación en Firestore
-    FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
-      'locations': FieldValue.arrayUnion([
-        {'latitude': newLocation.latitude, 'longitude': newLocation.longitude}
-      ]),
-      'lastUpdated': Timestamp.now(),
-    });
+        // Actualizar la ubicación en Firestore
+        FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
+          'locations': FieldValue.arrayUnion([
+            {
+              'latitude': newLocation.latitude,
+              'longitude': newLocation.longitude
+            }
+          ]),
+          'lastUpdated': Timestamp.now(),
+        });
+
+        // Actualizar la última ubicación y hora
+        lastLocation = newLocation;
+        lastUpdateTime = DateTime.now();
+
+        print('Ubicación actualizada: $newLocation');
+      } else {
+        // Reiniciar el temporizador cada vez que no se detecte movimiento
+        print('No se detectó movimiento, reiniciando temporizador...');
+        _locationUpdateTimer?.cancel();
+        _locationUpdateTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+          _updateTripLocation();
+        });
+      }
+    }
   }
-}
 
-// Función para calcular la distancia entre dos coordenadas (en metros)
+  bool _shouldUpdateLocation(LatLng newLocation) {
+    if (lastLocation == null || lastUpdateTime == null) {
+      return true; // Siempre actualizar si no hay ubicación previa
+    }
+
+    // Verificar si se ha movido más de 5 metros desde la última ubicación
+    double distance = _getDistance(lastLocation!, newLocation);
+
+    return distance >= moveThreshold;
+  }
+
+  // Función para calcular la distancia entre dos coordenadas (en metros)
   double _getDistance(LatLng start, LatLng end) {
-    final double latitude1 = start.latitude; // Cambié 'φ1' por 'latitude1'
-    final double longitude1 = start.longitude; // Cambié 'λ1' por 'longitude1'
-    final double latitude2 = end.latitude; // Cambié 'φ2' por 'latitude2'
-    final double longitude2 = end.longitude; // Cambié 'λ2' por 'longitude2'
-
     const double R = 6371e3; // Radio de la Tierra en metros
-
-    final double lat1 = latitude1 * pi / 180; // Convertir a radianes
-    final double lat2 = latitude2 * pi / 180; // Convertir a radianes
-    final double deltaLat =
-        (latitude2 - latitude1) * pi / 180; // Diferencia en latitudes
-    final double deltaLon =
-        (longitude2 - longitude1) * pi / 180; // Diferencia en longitudes
+    final double lat1 = start.latitude * pi / 180;
+    final double lat2 = end.latitude * pi / 180;
+    final double deltaLat = (end.latitude - start.latitude) * pi / 180;
+    final double deltaLon = (end.longitude - start.longitude) * pi / 180;
 
     final double a = (sin(deltaLat / 2) * sin(deltaLat / 2)) +
-        (cos(lat1) *
-            cos(lat2) *
-            sin(deltaLon / 2) *
-            sin(deltaLon / 2)); // Fórmula Haversine
-    final double c = 2 * atan2(sqrt(a), sqrt(1 - a)); // Fórmula Haversine
+        (cos(lat1) * cos(lat2) * sin(deltaLon / 2) * sin(deltaLon / 2));
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
     return R * c; // Distancia en metros
   }
@@ -236,8 +286,8 @@ void dispose() {
         builder: (context) {
           return AlertDialog(
             title: Text('No puedes cerrar sesión'),
-            content: Text(
-                'Debes finalizar el recorrido antes de cerrar tu cuenta.'),
+            content:
+                Text('Debes finalizar el recorrido antes de cerrar tu cuenta.'),
             actions: [
               TextButton(
                 onPressed: () {
@@ -254,15 +304,15 @@ void dispose() {
       await _auth.signOut();
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => LoginPage()), // Redirige al LoginPage
+        MaterialPageRoute(
+            builder: (context) => LoginPage()), // Redirige al LoginPage
       );
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // Actualizamos la ubicación cada 5 segundos si está en un recorrido
+    // Actualizamos la ubicación cada 20 segundos si está en un recorrido
     if (isOnTrip) {
       _updateTripLocation();
     }
@@ -272,10 +322,10 @@ void dispose() {
         actions: [
           IconButton(
             icon: Icon(Icons.exit_to_app),
-            onPressed: _logout,  // Llama al método de logout
-        ),
-      ],
-    ),
+            onPressed: _logout, // Llama al método de logout
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(

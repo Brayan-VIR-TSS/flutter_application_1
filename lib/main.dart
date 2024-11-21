@@ -5,9 +5,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'pages/login.dart'; // Asegúrate de tener la página de login
 import 'pages/create.dart'; // Asegúrate de tener la página de crear cuenta
-import 'pages/clients.dart'; // Página de clientes (transportista)
+import 'pages/clients.dart'; // Página de clientes (transportistas)
+import 'pages/users.dart'; //Pagina de pasajeros (usuarios)
 import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth
-
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginPage(),
         '/create': (context) => RegisterPage(),
         '/clients': (context) => ClientsPage(),
+        '/users': (context) => UserPage(), // Ruta para pasajeros
       },
     );
   }
@@ -52,33 +54,50 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
-    _checkConnectivity(); // Verifica la conectividad al iniciar
+    _checkAuthentication(); // Verifica la conectividad al iniciar
   }
 
   // Función para verificar la conexión a Internet
-  void _checkConnectivity() async {
-    List<ConnectivityResult> results = await _connectivity.checkConnectivity();
-    ConnectivityResult result =
-        results.isNotEmpty ? results.first : ConnectivityResult.none;
-
-    if (result == ConnectivityResult.none) {
-      _showNoInternetDialog();
-    } else {
-      // Verificar si el usuario ya está autenticado
-      _checkAuthentication();
-    }
-  }
-
-  // Función para verificar la autenticación
   void _checkAuthentication() async {
-    User? user = FirebaseAuth.instance.currentUser; // Verifica el usuario autenticado
+    User? user =
+        FirebaseAuth.instance.currentUser; // Verifica el usuario autenticado
     if (user != null) {
-      // El usuario está autenticado, redirigir a ClientsPage
-      Future.delayed(const Duration(seconds: 2), () {
-        Navigator.pushReplacementNamed(context, '/clients');
-      });
+      // El usuario está autenticado, ahora verificamos si es un transportista o un pasajero
+      DocumentSnapshot userSnapshot = await FirebaseFirestore.instance
+          .collection(
+              'users') // Verifica si está en la colección de usuarios (pasajeros)
+          .doc(user.uid)
+          .get();
+
+      if (userSnapshot.exists) {
+        // Si el documento existe en "users", es un pasajero
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.pushReplacementNamed(context,
+              '/users'); // Redirige a la página de pasajeros (cambia '/users' a la ruta correcta)
+        });
+      } else {
+        // Si no existe en "users", verificamos en "clients" para transportistas
+        DocumentSnapshot clientSnapshot = await FirebaseFirestore.instance
+            .collection(
+                'clients') // Verifica si está en la colección de transportistas
+            .doc(user.uid)
+            .get();
+
+        if (clientSnapshot.exists) {
+          // Si el documento existe en "clients", es un transportista
+          Future.delayed(const Duration(seconds: 2), () {
+            Navigator.pushReplacementNamed(
+                context, '/clients'); // Redirige a la página de transportistas
+          });
+        } else {
+          // Si no está en ninguna de las dos colecciones, redirige al login (por seguridad)
+          Future.delayed(const Duration(seconds: 2), () {
+            Navigator.pushReplacementNamed(context, '/login');
+          });
+        }
+      }
     } else {
-      // El usuario no está autenticado, redirigir a LoginPage
+      // El usuario no está autenticado, redirige al LoginPage
       Future.delayed(const Duration(seconds: 2), () {
         Navigator.pushReplacementNamed(context, '/login');
       });
@@ -113,7 +132,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 Navigator.of(context).pop();
                 // Después de cerrar el diálogo, intentamos de nuevo conectar
                 Future.delayed(const Duration(seconds: 2), () {
-                  _checkConnectivity(); // Volver a verificar la conectividad
+                  _checkAuthentication(); // Volver a verificar la conectividad
                 });
               },
             ),
@@ -125,7 +144,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   void dispose() {
-    _connectivitySubscription.cancel(); // Cancelar la suscripción cuando ya no sea necesario
+    _connectivitySubscription
+        .cancel(); // Cancelar la suscripción cuando ya no sea necesario
     super.dispose();
   }
 

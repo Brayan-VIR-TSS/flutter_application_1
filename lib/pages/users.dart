@@ -21,7 +21,7 @@ class _UserPageState extends State<UserPage> {
       true; // Flag para mostrar un indicador de carga mientras solicitamos el permiso
 
   late Stream<QuerySnapshot> _streamTransportistas;
-  //final Set<Marker> _markers = {}; // Marcadores del mapa
+  final Set<Marker> _markers = {}; // Marcadores del mapa
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String userId;
 
@@ -33,71 +33,16 @@ class _UserPageState extends State<UserPage> {
   @override
   void initState() {
     super.initState();
-    _checkLocationPermission(); // Verificar el permiso al iniciar la pantalla
     userId = _auth.currentUser?.uid ?? '';
     _streamTransportistas = FirebaseFirestore.instance
         .collection('recorridos')
         .where('isSharing', isEqualTo: true) // Filtrar transportistas activos
         .snapshots();
-  }
-
-  // Verificar y solicitar permisos de ubicación
-  Future<void> _checkLocationPermission() async {
-    PermissionStatus status = await Permission.location.status;
-
-    if (status.isGranted) {
-      // Si ya tiene el permiso, obtener la ubicación
-      _getUserLocation();
-    } else {
-      // Si no tiene el permiso, solicitarlo
-      _requestLocationPermission();
-    }
-  }
-
-  // Solicitar permisos de ubicación
-  Future<void> _requestLocationPermission() async {
-    PermissionStatus status = await Permission.location.request();
-
-    if (status.isGranted) {
-      // Si se concede el permiso, obtener la ubicación
-      _getUserLocation();
-    } else {
-      // Si el permiso es denegado, mostrar alerta
-      _showLocationPermissionAlert();
-    }
-  }
-
-  // Mostrar una alerta pidiendo el permiso de ubicación
-  void _showLocationPermissionAlert() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Permiso de Ubicación'),
-          content: Text(
-              'Para que esta aplicación funcione correctamente, necesitamos acceso a tu ubicación. Por favor, concede el permiso de ubicación.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _requestLocationPermission(); // Volver a intentar pedir el permiso
-              },
-              child: Text('Aceptar'),
-            ),
-          ],
-        );
-      },
-    );
+    _getUserLocation(); // Obtener ubicación del usuario al cargar la pantalla
   }
 
   Future<void> _getUserLocation() async {
-    // Usamos Geolocator para obtener la ubicación con la nueva API
+    // Usamos Geolocator para obtener la ubicación con la API
     LocationSettings locationSettings = LocationSettings(
       accuracy:
           LocationAccuracy.high, // Aquí defines la precisión que necesitas
@@ -202,10 +147,11 @@ class _UserPageState extends State<UserPage> {
     return markers;
   }
 
-       // Función para cerrar sesión
+  // Función para cerrar sesión
   void _logout() async {
     await FirebaseAuth.instance.signOut();
-    Navigator.pushReplacementNamed(context, '/login'); // Redirigir al login después de cerrar sesión
+    Navigator.pushReplacementNamed(
+        context, '/login'); // Redirigir al login después de cerrar sesión
   }
 
   @override

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/logout_button.dart'; // cerrar cuenta
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 class RoutePage extends StatefulWidget {
   final String transportistaId;
@@ -16,7 +15,9 @@ class RoutePage extends StatefulWidget {
 class _RoutePageState extends State<RoutePage> {
   GoogleMapController? mapController;
   Set<Polyline> _polylines = Set(); // Para las rutas
-  List<LatLng> _routeCoordinates = [];
+  Set<Marker> _markers = Set(); // Para los marcadores
+  List<LatLng> _currentRouteCoordinates = []; // Para el recorrido actual
+  List<List<LatLng>> _allCompletedRoutes = []; // Lista de rutas completadas
   bool _isDataLoaded = false; // Para saber si los datos han sido cargados
   bool _hasError = false; // Para saber si hubo un error en la consulta
 
@@ -26,55 +27,141 @@ class _RoutePageState extends State<RoutePage> {
     _fetchRouteData(); // Traer los datos del recorrido
   }
 
-  // Obtener el recorrido desde Firestore (ahora en la colección 'recorridos')
+  // Obtener el recorrido desde Firestore
   Future<void> _fetchRouteData() async {
     try {
       FirebaseFirestore.instance
           .collection('recorridos')
           .where('transportistaId', isEqualTo: widget.transportistaId)
-          .where('tripEnd',
-              isNotEqualTo: null) // Solo los recorridos terminados
+          .orderBy('lastUpdated',
+              descending: true) // Ordenar por la fecha de última actualización
+          .limit(3) // Limitar a las tres últimas rutas
           .snapshots()
           .listen((snapshot) {
-        _routeCoordinates
-            .clear(); // Limpiar las coordenadas antes de añadir nuevas
-
-        snapshot.docs.forEach((doc) {
-          List<dynamic> locations = doc['locations'];
-          _routeCoordinates.addAll(locations.map((loc) {
-            return LatLng(loc['latitude'], loc['longitude']);
-          }).toList());
+        // Limpiar las rutas anteriores antes de agregar las nuevas
+        setState(() {
+          _polylines.clear();
+          _markers.clear();
+          _currentRouteCoordinates.clear();
         });
 
+        bool foundCurrentRoute = false;
+        DateTime lastTripEnd = DateTime(2000); // Valor inicial para comparación
+
+        snapshot.docs.forEach((doc) {
+          bool isSharing = doc['isSharing'];
+          List<dynamic> locations = doc['locations'];
+          DateTime tripEnd = doc['tripEnd']?.toDate() ?? DateTime(2000);
+          DateTime tripStart = doc['tripStart']?.toDate() ?? DateTime(2000);
+          String tripId = doc.id; // ID del recorrido
+
+          // Si el recorrido está en curso (isSharing: true)
+          if (isSharing && !foundCurrentRoute) {
+            setState(() {
+              _currentRouteCoordinates.addAll(locations.map((loc) {
+                return LatLng(loc['latitude'], loc['longitude']);
+              }).toList());
+            });
+            foundCurrentRoute = true;
+          } else if (!isSharing) {
+            List<LatLng> completedRoute = locations.map((loc) {
+              return LatLng(loc['latitude'], loc['longitude']);
+            }).toList();
+
+            // Guardar todas las rutas completadas
+            setState(() {
+              _allCompletedRoutes.add(completedRoute);
+            });
+
+            // Limitar a solo las tres últimas rutas completadas
+            if (_allCompletedRoutes.length > 3) {
+              _allCompletedRoutes.removeAt(0); // Eliminar la ruta más antigua
+            }
+
+            // Agregar marcadores de inicio y fin
+            _addStartMarker(
+                locations[0], tripStart, tripId); // Marcador de inicio
+            _addEndMarker(locations.last, tripEnd, tripId); // Marcador de fin
+          }
+        });
+
+        //agrega las rutas al mapa
         setState(() {
-          _addRoutePolyline(); // Actualizar la línea en el mapa
-          _isDataLoaded = true; // Marcar los datos como cargados
+          // Añadir las rutas completadas al mapa
+          for (var route in _allCompletedRoutes) {
+            _addRoutePolyline(route,
+                const Color.fromARGB(255, 223, 250, 19)); // Ruta completada
+          }
+
+          // Añadir la ruta actual al mapa
+          if (_currentRouteCoordinates.isNotEmpty) {
+            _addRoutePolyline(_currentRouteCoordinates,
+                const Color.fromARGB(255, 2, 185, 231)); // Ruta actual
+          }
+
+          _isDataLoaded = true;
         });
       });
     } catch (e) {
       print("Error al cargar los datos del recorrido: $e");
       setState(() {
-        _hasError = true; // Si ocurre un error, marcar como error
-        _isDataLoaded =
-            true; // Para evitar que la pantalla quede en espera indefinida
+        _hasError = true;
+        _isDataLoaded = true;
       });
     }
   }
 
-  // Añadir la ruta a la lista de Polylines
-  void _addRoutePolyline() {
-    if (_routeCoordinates.isNotEmpty) {
-      _polylines.clear(); // Limpiar las polylines anteriores
+  // Añadir la ruta a la lista de Polylines con un color específico
+  void _addRoutePolyline(List<LatLng> route, Color color) {
+    if (route.isNotEmpty) {
       _polylines.add(Polyline(
-        polylineId: PolylineId('route'),
-        points: _routeCoordinates,
-        color: Colors.blue, // Color de la ruta
+        polylineId: PolylineId(color == const Color.fromARGB(255, 2, 185, 231)
+            ? 'current_route'
+            : 'completed_route'),
+        points: route,
+        color: color, // Usar el color pasado como parámetro
         width: 5,
       ));
     }
   }
 
+  // Función para agregar un marcador de inicio con las fechas
+  void _addStartMarker(
+      Map<String, dynamic> firstLocation, DateTime tripStart, String tripId) {
+    String formattedStartDate = DateFormat('yyyy-MM-dd').format(tripStart);
+    String formattedStartTime = DateFormat('/ HH:mm').format(tripStart);
 
+    final startMarker = Marker(
+      markerId: MarkerId('${tripId}tripStart'), // Usar el ID del recorrido
+      position: LatLng(firstLocation['latitude'], firstLocation['longitude']),
+      infoWindow: InfoWindow(
+        title: 'ID Recorrido: $tripId',
+        snippet: 'Inicio: $formattedStartDate $formattedStartTime',
+      ),
+    );
+    setState(() {
+      _markers.add(startMarker);
+    });
+  }
+
+  // Función para agregar un marcador de fin con las fechas
+  void _addEndMarker(
+      Map<String, dynamic> lastLocation, DateTime tripEnd, String tripId) {
+    String formattedEndDate = DateFormat('yyyy-MM-dd').format(tripEnd);
+    String formattedEndTime = DateFormat('/ HH:mm').format(tripEnd);
+
+    final endMarker = Marker(
+      markerId: MarkerId('${tripId}tripEnd'), // Usar el ID del recorrido
+      position: LatLng(lastLocation['latitude'], lastLocation['longitude']),
+      infoWindow: InfoWindow(
+        title: 'ID Recorrido: $tripId',
+        snippet: 'Fin: $formattedEndDate $formattedEndTime',
+      ),
+    );
+    setState(() {
+      _markers.add(endMarker);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,8 +174,8 @@ class _RoutePageState extends State<RoutePage> {
           : _isDataLoaded
               ? GoogleMap(
                   initialCameraPosition: CameraPosition(
-                    target: _routeCoordinates.isNotEmpty
-                        ? _routeCoordinates[0]
+                    target: _polylines.isNotEmpty
+                        ? _polylines.first.points[0]
                         : LatLng(0, 0),
                     zoom: 14,
                   ),
@@ -96,8 +183,7 @@ class _RoutePageState extends State<RoutePage> {
                     mapController = controller;
                   },
                   polylines: _polylines,
-                  markers: Set<
-                      Marker>(), // Aquí puedes agregar los marcadores si es necesario
+                  markers: _markers, // Mostrar los marcadores con las fechas
                   myLocationEnabled: true,
                   myLocationButtonEnabled: false,
                 )
