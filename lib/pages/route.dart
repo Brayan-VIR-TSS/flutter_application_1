@@ -17,7 +17,8 @@ class _RoutePageState extends State<RoutePage> {
   Set<Polyline> _polylines = Set(); // Para las rutas
   Set<Marker> _markers = Set(); // Para los marcadores
   List<LatLng> _currentRouteCoordinates = []; // Para el recorrido actual
-  List<List<LatLng>> _allCompletedRoutes = []; // Lista de rutas completadas
+  List<Map<String, dynamic>> _allCompletedRoutesWithIds =
+      []; // Lista de rutas completadas con ID
   bool _isDataLoaded = false; // Para saber si los datos han sido cargados
   bool _hasError = false; // Para saber si hubo un error en la consulta
 
@@ -37,18 +38,19 @@ class _RoutePageState extends State<RoutePage> {
               descending: true) // Ordenar por la fecha de última actualización
           .limit(3) // Limitar a las tres últimas rutas
           .snapshots()
-          .listen((snapshot) {
+          .listen((snapshot) async {
         // Limpiar las rutas anteriores antes de agregar las nuevas
         setState(() {
           _polylines.clear();
           _markers.clear();
           _currentRouteCoordinates.clear();
+          _allCompletedRoutesWithIds
+              .clear(); // Limpiar la lista de rutas con ID
         });
 
         bool foundCurrentRoute = false;
-        DateTime lastTripEnd = DateTime(2000); // Valor inicial para comparación
 
-        snapshot.docs.forEach((doc) {
+        for (var doc in snapshot.docs) {
           bool isSharing = doc['isSharing'];
           List<dynamic> locations = doc['locations'];
           DateTime tripEnd = doc['tripEnd']?.toDate() ?? DateTime(2000);
@@ -68,37 +70,53 @@ class _RoutePageState extends State<RoutePage> {
               return LatLng(loc['latitude'], loc['longitude']);
             }).toList();
 
-            // Guardar todas las rutas completadas
+            // Guardar todas las rutas completadas con su ID
             setState(() {
-              _allCompletedRoutes.add(completedRoute);
+              _allCompletedRoutesWithIds.add({
+                'tripId':
+                    tripId, // Guardamos el ID de la ruta junto con las coordenadas
+                'route': completedRoute,
+                'isOfficial': false, //inicialmente como no oficial
+              });
+
+              // Limitar a solo las tres últimas rutas completadas
+              if (_allCompletedRoutesWithIds.length > 3) {
+                _allCompletedRoutesWithIds
+                    .removeAt(0); // Eliminar la ruta más antigua
+              }
+
+              // Agregar marcadores de inicio y fin
+              _addStartMarker(
+                  locations[0], tripStart, tripId); // Marcador de inicio
+              _addEndMarker(locations.last, tripEnd, tripId); // Marcador de fin
             });
-
-            // Limitar a solo las tres últimas rutas completadas
-            if (_allCompletedRoutes.length > 3) {
-              _allCompletedRoutes.removeAt(0); // Eliminar la ruta más antigua
-            }
-
-            // Agregar marcadores de inicio y fin
-            _addStartMarker(
-                locations[0], tripStart, tripId); // Marcador de inicio
-            _addEndMarker(locations.last, tripEnd, tripId); // Marcador de fin
           }
-        });
+        }
 
-        //agrega las rutas al mapa
+        // Ahora que tenemos todas las rutas, incluimos las oficiales
+        for (var route in _allCompletedRoutesWithIds) {
+          // Recuperar la información de si la ruta es oficial
+          bool isOfficialRoute = await _checkIfRouteIsOfficial(route['tripId']);
+          route['isOfficial'] = isOfficialRoute;
+
+          // Añadir la ruta con el color correspondiente
+          _addRoutePolyline(
+            route['route'],
+            isOfficialRoute
+                ? Colors.black
+                : const Color.fromARGB(255, 223, 250, 19),
+            isOfficialRoute: isOfficialRoute,
+          );
+        }
+
+        if (_currentRouteCoordinates.isNotEmpty) {
+          _addRoutePolyline(
+            _currentRouteCoordinates,
+            const Color.fromARGB(255, 2, 185, 231),
+          ); // Ruta actual
+        }
+
         setState(() {
-          // Añadir las rutas completadas al mapa
-          for (var route in _allCompletedRoutes) {
-            _addRoutePolyline(route,
-                const Color.fromARGB(255, 223, 250, 19)); // Ruta completada
-          }
-
-          // Añadir la ruta actual al mapa
-          if (_currentRouteCoordinates.isNotEmpty) {
-            _addRoutePolyline(_currentRouteCoordinates,
-                const Color.fromARGB(255, 2, 185, 231)); // Ruta actual
-          }
-
           _isDataLoaded = true;
         });
       });
@@ -111,15 +129,33 @@ class _RoutePageState extends State<RoutePage> {
     }
   }
 
-  // Añadir la ruta a la lista de Polylines con un color específico
-  void _addRoutePolyline(List<LatLng> route, Color color) {
+  Future<bool> _checkIfRouteIsOfficial(String tripId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('tripId', isEqualTo: tripId)
+          .get();
+
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      print("Error al verificar si la ruta es oficial: $e");
+      return false;
+    }
+  }
+
+// Añadir la ruta a la lista de Polylines con un color específico
+  void _addRoutePolyline(List<LatLng> route, Color color,
+      {bool isOfficialRoute = false}) {
     if (route.isNotEmpty) {
       _polylines.add(Polyline(
         polylineId: PolylineId(color == const Color.fromARGB(255, 2, 185, 231)
             ? 'current_route'
-            : 'completed_route'),
+            : isOfficialRoute
+                ? 'official_route'
+                : 'completed_route'),
         points: route,
-        color: color, // Usar el color pasado como parámetro
+        color:
+            isOfficialRoute ? Colors.black : color, // Si es oficial, usar negro
         width: 5,
       ));
     }
@@ -163,6 +199,185 @@ class _RoutePageState extends State<RoutePage> {
     });
   }
 
+  // Botón para recargar el mapa
+  void _reloadMap() {
+    setState(() {
+      _polylines.clear(); // Limpiar las rutas actuales
+      _markers.clear(); // Limpiar los marcadores
+      _fetchRouteData(); // Recargar los datos de las rutas
+    });
+  }
+
+// Mostrar un BottomSheet para seleccionar la ruta
+  void _showRouteSelectionMenu(List<Map<String, dynamic>> routes) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled:
+          true, // Asegura que el BottomSheet no ocupe toda la pantalla
+      builder: (context) {
+        return Container(
+          height: 250, // Ajusta la altura según lo necesario
+          child: ListView.builder(
+            itemCount: routes.length,
+            itemBuilder: (context, index) {
+              String tripId = routes[index]['tripId'];
+              bool isRouteSaved = false;
+
+              // Verifica si la ruta ya está guardada
+              FirebaseFirestore.instance
+                  .collection('official_route')
+                  .where('tripId', isEqualTo: tripId)
+                  .get()
+                  .then((querySnapshot) {
+                isRouteSaved = querySnapshot.docs.isNotEmpty;
+                setState(() {}); // Redibujar para reflejar el estado
+              });
+
+              return ListTile(
+                title: Text("ID de la ruta: $tripId"),
+                trailing: isRouteSaved
+                    ? Icon(Icons.star,
+                        color: Colors.yellow) // Ícono de ruta guardada
+                    : null,
+                onTap: () {
+                  if (isRouteSaved) {
+                    // Si la ruta ya está guardada, preguntamos si desea borrarla
+                    _showDeleteConfirmationDialog(tripId);
+                  } else {
+                    // Si la ruta no está guardada, guardarla
+                    _saveRoute(routes[index]['route'], routes[index]['tripId']);
+                    Navigator.pop(context); // Cerrar el bottom sheet
+                  }
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+// Función para mostrar el diálogo de confirmación antes de borrar la ruta
+  void _showDeleteConfirmationDialog(String tripId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Eliminar Ruta"),
+          content: Text(
+              "Esta ruta está guardada. ¿Desea borrarla de los recorridos oficiales?"),
+          actions: <Widget>[
+            TextButton(
+              child: Text("Cancelar"),
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar el diálogo sin hacer nada
+              },
+            ),
+            TextButton(
+              child: Text("Eliminar"),
+              onPressed: () {
+                // Eliminar la ruta de Firestore
+                _deleteRouteFromOfficial(tripId);
+                Navigator.of(context).pop(); // Cerrar el diálogo
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// Función para eliminar la ruta de Firestore
+  Future<void> _deleteRouteFromOfficial(String tripId) async {
+    try {
+      // Buscar el documento que contiene la ruta en la colección 'official_route'
+      var snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('tripId', isEqualTo: tripId)
+          .get();
+
+      // Eliminar el documento
+      for (var doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      // Actualizar la lista de rutas guardadas
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Ruta eliminada de los Recorridos ficiales.")),
+      );
+
+      Navigator.pop(context); // Esto cierra el BottomSheet
+
+      _fetchRouteData(); // Recargar las rutas
+      // No eliminamos la ruta de la lista que usamos para mostrar en el menú.
+      // Solo eliminamos de la base de datos.
+    } catch (e) {
+      print("Error al eliminar la ruta: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Hubo un error al eliminar la ruta")),
+      );
+    }
+  }
+
+  // Función para verificar si la ruta ya está guardada en Firestore
+  Future<bool> _isRouteAlreadySaved(String tripId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('tripId',
+              isEqualTo: tripId) // Verificar si el tripId ya está guardado
+          .limit(1)
+          .get();
+
+      return snapshot
+          .docs.isNotEmpty; // Si ya existe algún documento con ese tripId
+    } catch (e) {
+      print("Error al verificar si la ruta está guardada: $e");
+      return false;
+    }
+  }
+
+  // Función para guardar una ruta en Firestore
+  Future<void> _saveRoute(List<LatLng> route, String tripId) async {
+    // Verificar si la ruta ya está guardada en Firestore
+    bool isAlreadySaved = await _isRouteAlreadySaved(tripId);
+    if (isAlreadySaved) {
+      // Mostrar un mensaje de advertencia si la ruta ya está guardada
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("¡Esta ruta ya está guardada!")),
+      );
+      return; // No hacer nada si ya está guardada
+    }
+
+    try {
+      // Convertir la lista de LatLng a una lista de mapas para almacenar en Firestore
+      List<Map<String, dynamic>> locations = route.map((latLng) {
+        return {'latitude': latLng.latitude, 'longitude': latLng.longitude};
+      }).toList();
+
+      // Guardar la ruta en Firestore en la colección 'official_route'
+      await FirebaseFirestore.instance.collection('official_route').add({
+        'tripId': tripId, // Guardamos también el ID de la ruta
+        'transportistaId': widget.transportistaId,
+        'locations': locations,
+        'savedAt': FieldValue.serverTimestamp(),
+        'isOfficial': true, // Campo que marca la ruta como oficial
+      });
+
+      // Confirmar al usuario que la ruta fue guardada
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Ruta guardada con éxito")),
+      );
+
+      _fetchRouteData(); // Recargar las rutas
+    } catch (e) {
+      print("Error al guardar la ruta: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Hubo un error al guardar la ruta")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -188,6 +403,23 @@ class _RoutePageState extends State<RoutePage> {
                   myLocationButtonEnabled: false,
                 )
               : Center(child: CircularProgressIndicator()),
+      // Agregar BottomAppBar
+      bottomNavigationBar: BottomAppBar(
+        child: Padding(
+          padding: EdgeInsets.all(8.0),
+          child: ElevatedButton(
+            onPressed: () =>
+                _showRouteSelectionMenu(_allCompletedRoutesWithIds),
+            child: Text("Seleccionar ruta Official para guardar"),
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _reloadMap,
+        child: Icon(Icons.refresh), // Ícono de recarga
+        tooltip:
+            'Recargar mapa', // Texto que aparece cuando se mantiene presionado
+      ),
     );
   }
 }
