@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../widgets/logout_button.dart'; // Cerrar cuenta
 import 'dart:async';
 import 'dart:convert';
@@ -29,6 +28,7 @@ class _UserPageState extends State<UserPage> {
   final String _googleApiKey = "AIzaSyCeuj3D-wjMEv8kNXjb34HcTWfj85VT3o0";
 
   Set<Marker> transportistaMarkers = {}; // Marcadores para transportistas
+  final Set<Polyline> _polylines = {};
 
   @override
   void initState() {
@@ -39,6 +39,44 @@ class _UserPageState extends State<UserPage> {
         .where('isSharing', isEqualTo: true) // Filtrar transportistas activos
         .snapshots();
     _getUserLocation(); // Obtener ubicación del usuario al cargar la pantalla
+    _loadOfficialRoute(); // Cargar la ruta oficial
+  }
+
+// Función para cargar la ruta oficial
+  Future<void> _loadOfficialRoute() async {
+    List<LatLng> route = await _getOfficialRoute();
+    if (route.isNotEmpty) {
+      setState(() {
+        _polylines.add(Polyline(
+          polylineId: PolylineId('officialRoute'),
+          color: Colors.blue, // Puedes cambiar el color
+          width: 5,
+          points: route,
+        ));
+      });
+    }
+  }
+
+  // Función para obtener la ruta oficial en tiempo real
+  Stream<List<LatLng>> _getOfficialRouteStream() {
+    // Escuchar la colección 'official_route' en tiempo real
+    return FirebaseFirestore.instance
+        .collection('official_route')
+        .where('isOfficial', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) {
+        return []; // Si no hay rutas, retornamos una lista vacía
+      }
+
+      // Tomamos la primera ruta oficial (puedes adaptarlo si hay varias)
+      final routeData = snapshot.docs.first.data();
+      List<dynamic> locations = routeData['locations'];
+      return locations
+          .map(
+              (location) => LatLng(location['latitude'], location['longitude']))
+          .toList();
+    });
   }
 
   Future<void> _getUserLocation() async {
@@ -51,23 +89,18 @@ class _UserPageState extends State<UserPage> {
     );
 
     try {
-      // Obtenemos la ubicación con los nuevos ajustes
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: locationSettings,
       );
-
       setState(() {
         _userLocation = LatLng(position.latitude, position.longitude);
-        _isLoading =
-            false; // Desactivamos el cargador una vez que la ubicación está lista
+        _isLoading = false;
       });
     } catch (e) {
       print('Error al obtener la ubicación: $e');
-      // Manejo de errores (por ejemplo, si la ubicación no está disponible o se deniega el permiso)
     }
   }
 
-  // Función para obtener los datos del transportista desde la colección 'clients'
   Future<Map<String, String>> _getTransportistaDetails(
       String transportistaId) async {
     DocumentSnapshot transportistaDoc = await FirebaseFirestore.instance
@@ -86,7 +119,6 @@ class _UserPageState extends State<UserPage> {
     return {}; // Si no se encuentran los datos
   }
 
-  // Calcular el tiempo estimado usando la API de Google Distance Matrix
   Future<String> _getEstimatedTime(
       LatLng userLocation, LatLng transportistaLocation) async {
     final String origin = '${userLocation.latitude},${userLocation.longitude}';
@@ -104,67 +136,115 @@ class _UserPageState extends State<UserPage> {
           data['rows'][0]['elements'][0]['duration']['text'];
       return duration;
     } else {
-      return 'Desconocido'; // Si ocurre un error al obtener el tiempo
+      return 'Desconocido';
     }
   }
 
-  // Función para crear los marcadores para los transportistas activos
-  Set<Marker> _buildMarkers(List<DocumentSnapshot> transportistas) {
+  Future<Map<String, String>> _getEstimatedTimeAndDistance(
+      LatLng userLocation, LatLng transportistaLocation) async {
+    final String origin = '${userLocation.latitude},${userLocation.longitude}';
+    final String destination =
+        '${transportistaLocation.latitude},${transportistaLocation.longitude}';
+
+    final String url =
+        'https://maps.googleapis.com/maps/api/distancematrix/json?origins=$origin&destinations=$destination&key=$_googleApiKey';
+
+    final response = await http.get(Uri.parse(url));
+    final Map<String, dynamic> data = json.decode(response.body);
+
+    if (data['status'] == 'OK') {
+      final String duration =
+          data['rows'][0]['elements'][0]['duration']['text'];
+      final String distance =
+          data['rows'][0]['elements'][0]['distance']['text'];
+
+      return {'duration': duration, 'distance': distance};
+    } else {
+      return {'duration': 'Desconocido', 'distance': 'Desconocido'};
+    }
+  }
+
+  Future<void> _buildMarkers(List<DocumentSnapshot> transportistas) async {
     Set<Marker> markers = {};
 
     for (var transportista in transportistas) {
-      // Asegúrate de que el campo 'locations' contiene las ubicaciones del transportista
       var transportistaLocation =
           transportista['locations'][0]; // Tomamos la primera ubicación
       var transportistaPosition = LatLng(
         transportistaLocation['latitude'],
         transportistaLocation['longitude'],
       );
-
       var transportistaId = transportista['transportistaId'];
 
-      // Obtenemos los datos del transportista
-      _getTransportistaDetails(transportistaId).then((details) async {
-        String name = details['name'] ?? 'Desconocido';
-        String lastname = details['lastname'] ?? 'Desconocido';
-        String vehiclePlate = details['vehicle_plate'] ?? 'Sin patente';
-        String estimatedTime =
-            await _getEstimatedTime(_userLocation, transportistaPosition);
+      Map<String, String> details =
+          await _getTransportistaDetails(transportistaId);
+      String name = details['name'] ?? 'Desconocido';
+      String lastname = details['lastname'] ?? 'Desconocido';
+      String vehiclePlate = details['vehicle_plate'] ?? 'Sin patente';
 
-        // Agregamos un marcador para cada transportista activo
-        //info en pantalla
-        markers.add(Marker(
-          markerId: MarkerId(transportista.id),
-          position: transportistaPosition,
-          infoWindow: InfoWindow(
-            title: 'Transportista $name $lastname',
-            snippet: 'Patente: $vehiclePlate\nTiempo estimado: $estimatedTime',
-          ),
-        ));
-      });
+      // Obtener tanto la distancia como el tiempo estimado
+      Map<String, String> timeAndDistance = await _getEstimatedTimeAndDistance(
+          _userLocation, transportistaPosition);
+      String estimatedTime = timeAndDistance['duration'] ?? 'Desconocido';
+      String distance = timeAndDistance['distance'] ?? 'Desconocido';
+
+      markers.add(Marker(
+        markerId: MarkerId(transportista.id),
+        position: transportistaPosition,
+        infoWindow: InfoWindow(
+          title: 'Transportista $name $lastname',
+          snippet:
+              'Patente: $vehiclePlate\nTiempo estimado: $estimatedTime\nDistancia: $distance',
+        ),
+      ));
     }
 
-    return markers;
+    setState(() {
+      transportistaMarkers = markers;
+    });
   }
 
-  // Función para cerrar sesión
   void _logout() async {
     await FirebaseAuth.instance.signOut();
-    Navigator.pushReplacementNamed(
-        context, '/login'); // Redirigir al login después de cerrar sesión
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  // Función para obtener la ruta oficial
+  Future<List<LatLng>> _getOfficialRoute() async {
+    // Referencia a la colección "official_route"
+    final snapshot = await FirebaseFirestore.instance
+        .collection('official_route')
+        .where('isOfficial', isEqualTo: true) // Solo las rutas oficiales
+        .get();
+
+    // Si no se encuentra ninguna ruta oficial, retornamos una lista vacía
+    if (snapshot.docs.isEmpty) {
+      return [];
+    }
+
+    // Tomamos la primera ruta oficial (puedes adaptar esto si quieres múltiples rutas)
+    final routeData = snapshot.docs.first.data();
+
+    // Convertimos las ubicaciones a LatLng
+    List<dynamic> locations = routeData['locations'];
+    List<LatLng> route = locations
+        .map((location) => LatLng(location['latitude'], location['longitude']))
+        .toList();
+
+    return route;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Usuarios - Transportistas Activos'),
+        title: Text('Transportes Activos y Ruta Oficial'),
         actions: [
           LogoutButton(onLogout: _logout), // Botón de cerrar sesión
         ],
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator()) // Cargando ubicación
+          ? Center(child: CircularProgressIndicator())
           : StreamBuilder<QuerySnapshot>(
               stream: _streamTransportistas,
               builder: (context, snapshot) {
@@ -174,43 +254,7 @@ class _UserPageState extends State<UserPage> {
 
                 var transportistas = snapshot.data!.docs;
 
-                // Crear un conjunto de marcadores
-                Set<Marker> transportistaMarkers = {};
-
-                // Iterar sobre los transportistas y agregar los marcadores
-                for (var transportista in transportistas) {
-                  var transportistaLocation = transportista['locations']
-                      [0]; // Tomamos la primera ubicación
-                  var transportistaPosition = LatLng(
-                    transportistaLocation['latitude'],
-                    transportistaLocation['longitude'],
-                  );
-
-                  var transportistaId = transportista['transportistaId'];
-
-                  // Obtener detalles del transportista
-                  _getTransportistaDetails(transportistaId)
-                      .then((details) async {
-                    String name = details['name'] ?? 'Desconocido';
-                    String lastname = details['lastname'] ?? 'Desconocido';
-                    String vehiclePlate =
-                        details['vehicle_plate'] ?? 'Sin patente';
-                    String estimatedTime = await _getEstimatedTime(
-                        _userLocation, transportistaPosition);
-
-                    setState(() {
-                      transportistaMarkers.add(Marker(
-                        markerId: MarkerId(transportista.id),
-                        position: transportistaPosition,
-                        infoWindow: InfoWindow(
-                          title: 'Transportista $name $lastname',
-                          snippet:
-                              'Patente: $vehiclePlate\nTiempo estimado: $estimatedTime',
-                        ),
-                      ));
-                    });
-                  });
-                }
+                _buildMarkers(transportistas);
 
                 return GoogleMap(
                   initialCameraPosition: CameraPosition(
@@ -221,7 +265,8 @@ class _UserPageState extends State<UserPage> {
                     mapController = controller;
                   },
                   markers:
-                      transportistaMarkers, // Los marcadores de transportistas activos
+                      transportistaMarkers, // Marcadores de transportistas activos
+                  polylines: _polylines,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
                 );
