@@ -4,7 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
-import '../widgets/logout_button.dart'; // Cerrar cuenta
+import '../widgets/logout_button.dart'; // Cerrar cuenta??
 import 'dart:async';
 import 'dart:math';
 import 'login.dart';
@@ -300,13 +300,29 @@ class _ClientsPageState extends State<ClientsPage> {
         },
       );
     } else {
-      // Cerrar sesión y redirigir al login
-      await _auth.signOut();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-            builder: (context) => LoginPage()), // Redirige al LoginPage
-      );
+      try {
+        // Obtener el ID del usuario
+        String userId = FirebaseAuth.instance.currentUser!.uid;
+
+        // Actualizar el campo 'isLoggedIn' a false en Firestore
+        await FirebaseFirestore.instance
+            .collection('clients')
+            .doc(userId)
+            .update({
+          'isLoggedIn': false,
+        });
+
+        // Cerrar sesión en Firebase
+        await _auth.signOut();
+
+        // Redirigir al login utilizando la ruta configurada
+        Navigator.pushReplacementNamed(context, '/login');
+      } catch (e) {
+        // Si ocurre un error, mostrar un mensaje de error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cerrar sesión: ${e.toString()}')),
+        );
+      }
     }
   }
 

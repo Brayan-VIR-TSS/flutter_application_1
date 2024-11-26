@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class LogoutButton extends StatelessWidget {
   final VoidCallback? onLogout; // Callback para controlar el cierre de sesión

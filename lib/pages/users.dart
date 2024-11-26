@@ -194,8 +194,26 @@ class _UserPageState extends State<UserPage> {
   }
 
   void _logout() async {
-    await FirebaseAuth.instance.signOut();
-    Navigator.pushReplacementNamed(context, '/login');
+    try {
+      // Obtén el ID del usuario actual
+      String userId = FirebaseAuth.instance.currentUser!.uid;
+
+      // Actualiza el atributo 'isLoggedIn' a false en Firestore
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'isLoggedIn': false,
+      });
+
+      // Cierra la sesión del usuario
+      await FirebaseAuth.instance.signOut();
+
+      // Redirige al usuario a la página de login
+      Navigator.pushReplacementNamed(context, '/login');
+    } catch (e) {
+      // Muestra un mensaje de error si algo sale mal
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cerrar sesión: ${e.toString()}')),
+      );
+    }
   }
 
   Future<void> _showOfficialRoute(String transportistaId) async {

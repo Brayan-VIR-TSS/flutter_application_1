@@ -183,6 +183,7 @@ class _RegisterPageState extends State<RegisterPage> {
           'role': role,
           'geo':
               GeoPoint(_currentPosition!.latitude, _currentPosition!.longitude),
+          'isLoggedIn': false, // Campo que indica si la cuenta está activa o no
         };
 
         if (role == 'transportista') {
