@@ -39,22 +39,7 @@ class _UserPageState extends State<UserPage> {
         .where('isSharing', isEqualTo: true) // Filtrar transportistas activos
         .snapshots();
     _getUserLocation(); // Obtener ubicación del usuario al cargar la pantalla
-    _loadOfficialRoute(); // Cargar la ruta oficial
-  }
-
-// Función para cargar la ruta oficial
-  Future<void> _loadOfficialRoute() async {
-    List<LatLng> route = await _getOfficialRoute();
-    if (route.isNotEmpty) {
-      setState(() {
-        _polylines.add(Polyline(
-          polylineId: PolylineId('officialRoute'),
-          color: Colors.blue, // Puedes cambiar el color
-          width: 5,
-          points: route,
-        ));
-      });
-    }
+    //_loadOfficialRoute(); // Cargar la ruta oficial
   }
 
   // Función para obtener la ruta oficial en tiempo real
@@ -196,6 +181,10 @@ class _UserPageState extends State<UserPage> {
           snippet:
               'Patente: $vehiclePlate\nTiempo estimado: $estimatedTime\nDistancia: $distance',
         ),
+        onTap: () async {
+          // Cuando se haga clic en el marcador, obtener la ruta oficial
+          _showOfficialRoute(transportistaId);
+        },
       ));
     }
 
@@ -209,29 +198,41 @@ class _UserPageState extends State<UserPage> {
     Navigator.pushReplacementNamed(context, '/login');
   }
 
-  // Función para obtener la ruta oficial
-  Future<List<LatLng>> _getOfficialRoute() async {
-    // Referencia a la colección "official_route"
+  Future<void> _showOfficialRoute(String transportistaId) async {
+    // Limpiar las rutas anteriores
+    _polylines.clear();
+
+    // Consultamos la colección "official_route" en Firestore para obtener la ruta oficial del transportista
     final snapshot = await FirebaseFirestore.instance
         .collection('official_route')
-        .where('isOfficial', isEqualTo: true) // Solo las rutas oficiales
+        .where('isOfficial', isEqualTo: true)
+        .where('transportistaId', isEqualTo: transportistaId)
         .get();
 
-    // Si no se encuentra ninguna ruta oficial, retornamos una lista vacía
-    if (snapshot.docs.isEmpty) {
-      return [];
+    // Verificamos si encontramos una ruta oficial
+    if (snapshot.docs.isNotEmpty) {
+      final routeData = snapshot.docs.first.data();
+      List<dynamic> locations = routeData['locations'];
+
+      // Convertimos las coordenadas de la ruta oficial en una lista de LatLng
+      List<LatLng> route = locations
+          .map(
+              (location) => LatLng(location['latitude'], location['longitude']))
+          .toList();
+
+      // Dibujamos la polilínea para mostrar la ruta en el mapa
+      setState(() {
+        _polylines.add(Polyline(
+          polylineId: PolylineId('officialRoute_$transportistaId'),
+          color: Colors.blue,
+          width: 5,
+          points: route,
+        ));
+      });
+    } else {
+      // Si no hay ruta oficial
+      print("No se encontró una ruta oficial para este transportista.");
     }
-
-    // Tomamos la primera ruta oficial (puedes adaptar esto si quieres múltiples rutas)
-    final routeData = snapshot.docs.first.data();
-
-    // Convertimos las ubicaciones a LatLng
-    List<dynamic> locations = routeData['locations'];
-    List<LatLng> route = locations
-        .map((location) => LatLng(location['latitude'], location['longitude']))
-        .toList();
-
-    return route;
   }
 
   @override
