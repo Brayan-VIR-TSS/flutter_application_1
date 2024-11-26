@@ -319,7 +319,7 @@ class _RoutePageState extends State<RoutePage> {
     }
   }
 
-  // Función para verificar si la ruta ya está guardada en Firestore
+  // Función para verificar si la ruta ya "está" guardada
   Future<bool> _isRouteAlreadySaved(String tripId) async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -337,24 +337,44 @@ class _RoutePageState extends State<RoutePage> {
     }
   }
 
-  // Función para guardar una ruta en Firestore
-  Future<void> _saveRoute(List<LatLng> route, String tripId) async {
-    // Verificar si la ruta ya está guardada en Firestore
-    bool isAlreadySaved = await _isRouteAlreadySaved(tripId);
-    if (isAlreadySaved) {
-      // Mostrar un mensaje de advertencia si la ruta ya está guardada
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("¡Esta ruta ya está guardada!")),
-      );
-      return; // No hacer nada si ya está guardada
+  // Verificar si el transportista ya tiene "una" ruta guardada
+  Future<bool> _hasOfficialRoute() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('transportistaId', isEqualTo: widget.transportistaId)
+          .limit(1) // Solo buscamos uno
+          .get();
+
+      return snapshot
+          .docs.isNotEmpty; // Si ya existe un documento con el transportista
+    } catch (e) {
+      print("Error al verificar recorrido oficial: $e");
+      return false;
     }
+  }
+
+  Future<void> _saveRoute(List<LatLng> route, String tripId) async {
+    // Verificar si el transportista ya tiene un recorrido oficial guardado
+    bool hasOfficialRoute = await _hasOfficialRoute();
+
+    if (hasOfficialRoute) {
+      // Mostrar un mensaje de confirmación para borrar el recorrido oficial anterior
+      _showDeleteConfirmationDialogBeforeSaving(route, tripId);
+    } else {
+      // Si no hay recorrido oficial, guardamos este recorrido como oficial
+      _saveAsOfficial(route, tripId);
+    }
+  }
+
+// Función para guardar la ruta como oficial
+  Future<void> _saveAsOfficial(List<LatLng> route, String tripId) async {
+    // Convertir la lista de LatLng a una lista de mapas para almacenar en Firestore
+    List<Map<String, dynamic>> locations = route.map((latLng) {
+      return {'latitude': latLng.latitude, 'longitude': latLng.longitude};
+    }).toList();
 
     try {
-      // Convertir la lista de LatLng a una lista de mapas para almacenar en Firestore
-      List<Map<String, dynamic>> locations = route.map((latLng) {
-        return {'latitude': latLng.latitude, 'longitude': latLng.longitude};
-      }).toList();
-
       // Guardar la ruta en Firestore en la colección 'official_route'
       await FirebaseFirestore.instance.collection('official_route').add({
         'tripId': tripId, // Guardamos también el ID de la ruta
@@ -366,7 +386,7 @@ class _RoutePageState extends State<RoutePage> {
 
       // Confirmar al usuario que la ruta fue guardada
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Ruta guardada con éxito")),
+        SnackBar(content: Text("Ruta guardada como oficial")),
       );
 
       _fetchRouteData(); // Recargar las rutas
@@ -374,6 +394,68 @@ class _RoutePageState extends State<RoutePage> {
       print("Error al guardar la ruta: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Hubo un error al guardar la ruta")),
+      );
+    }
+  }
+
+  // Función para mostrar el diálogo de confirmación antes de borrar el recorrido anterior
+  void _showDeleteConfirmationDialogBeforeSaving(
+      List<LatLng> newRoute, String newTripId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Borrar Recorrido Oficial"),
+          content: Text(
+              "Solo se le permite guardar un recorrido oficial. ¿Desea borrar el anterior recorrido oficial y guardar este nuevo?"),
+          actions: <Widget>[
+            TextButton(
+              child: Text("Cancelar"),
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar el diálogo sin hacer nada
+              },
+            ),
+            TextButton(
+              child: Text("Eliminar y Guardar"),
+              onPressed: () {
+                // Eliminar el recorrido oficial anterior
+                _deletePreviousOfficialRoute().then((_) {
+                  // Luego de borrar, guardar el nuevo recorrido
+                  _saveAsOfficial(newRoute, newTripId);
+                  Navigator.of(context).pop(); // Cerrar el diálogo
+                });
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Función para eliminar el recorrido oficial anterior
+  Future<void> _deletePreviousOfficialRoute() async {
+    try {
+      // Buscar el documento que contiene el recorrido oficial del transportista
+      var snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('transportistaId', isEqualTo: widget.transportistaId)
+          .get();
+
+      // Eliminar el documento
+      for (var doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      // Confirmación de eliminación
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Recorrido oficial anterior eliminado.")),
+      );
+    } catch (e) {
+      print("Error al eliminar el recorrido oficial anterior: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                "Hubo un error al eliminar el recorrido oficial anterior.")),
       );
     }
   }
