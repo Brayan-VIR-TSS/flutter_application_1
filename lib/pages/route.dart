@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'dart:math';
 
 class RoutePage extends StatefulWidget {
   final String transportistaId;
@@ -21,6 +22,9 @@ class _RoutePageState extends State<RoutePage> {
       []; // Lista de rutas completadas con ID
   bool _isDataLoaded = false; // Para saber si los datos han sido cargados
   bool _hasError = false; // Para saber si hubo un error en la consulta
+  bool _isOfficialRouteSelected =
+      false; // Para saber si se seleccionó una ruta oficial
+  List<LatLng> _selectedOfficialRoute = []; // Ruta oficial seleccionada
 
   @override
   void initState() {
@@ -79,7 +83,7 @@ class _RoutePageState extends State<RoutePage> {
                 'isOfficial': false, //inicialmente como no oficial
               });
 
-              // Limitar a solo las tres últimas rutas completadas
+              // Limitar a solo las tres últimas rutas completadas??es redundante??
               if (_allCompletedRoutesWithIds.length > 3) {
                 _allCompletedRoutesWithIds
                     .removeAt(0); // Eliminar la ruta más antigua
@@ -127,6 +131,77 @@ class _RoutePageState extends State<RoutePage> {
         _isDataLoaded = true;
       });
     }
+  }
+
+  // Función para manejar la selección de una ruta oficial
+  Future<void> _showOfficialRoute() async {
+    try {
+      var snapshot = await FirebaseFirestore.instance
+          .collection('official_route')
+          .where('transportistaId', isEqualTo: widget.transportistaId)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        var route = snapshot
+            .docs.first; // Tomamos la primera ruta oficial del transportista
+        List<dynamic> locations = route['locations'];
+
+        setState(() {
+          _isOfficialRouteSelected = true;
+          _selectedOfficialRoute = locations
+              .map((loc) => LatLng(loc['latitude'], loc['longitude']))
+              .toList();
+        });
+
+        // Limpiar las rutas anteriores
+        _polylines.clear();
+        _markers.clear();
+
+        // Agregar la ruta oficial
+        _addRoutePolyline(
+          _selectedOfficialRoute,
+          Colors.black, // Color de la ruta oficial
+          isOfficialRoute: true,
+        );
+
+        // Agregar marcadores de inicio y fin
+        _addStartMarker(locations[0], DateTime.now(), 'officialStart');
+        _addEndMarker(locations.last, DateTime.now(), 'officialEnd');
+
+        // Centrar el mapa en la ruta oficial
+        _centerMapOnRoute(_selectedOfficialRoute);
+      }
+    } catch (e) {
+      print("Error al cargar la ruta oficial: $e");
+    }
+  }
+
+  // Función para centrar el mapa en la ruta seleccionada
+  void _centerMapOnRoute(List<LatLng> route) {
+    if (route.isNotEmpty) {
+      LatLngBounds bounds = _calculateBounds(route);
+      mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+    }
+  }
+
+  // Calcular los límites de la ruta (para hacer zoom adecuado)
+  LatLngBounds _calculateBounds(List<LatLng> route) {
+    double minLat = route[0].latitude;
+    double maxLat = route[0].latitude;
+    double minLng = route[0].longitude;
+    double maxLng = route[0].longitude;
+
+    for (LatLng point in route) {
+      minLat = min(minLat, point.latitude);
+      maxLat = max(maxLat, point.latitude);
+      minLng = min(minLng, point.longitude);
+      maxLng = max(maxLng, point.longitude);
+    }
+
+    return LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
   }
 
   Future<bool> _checkIfRouteIsOfficial(String tripId) async {
@@ -485,14 +560,25 @@ class _RoutePageState extends State<RoutePage> {
                   myLocationButtonEnabled: false,
                 )
               : Center(child: CircularProgressIndicator()),
-      // Agregar BottomAppBar
+      // Agregar BottomAppBar con ambos botones
       bottomNavigationBar: BottomAppBar(
         child: Padding(
           padding: EdgeInsets.all(8.0),
-          child: ElevatedButton(
-            onPressed: () =>
-                _showRouteSelectionMenu(_allCompletedRoutesWithIds),
-            child: Text("Seleccionar ruta Official para guardar"),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment
+                .spaceAround, // Esto coloca los botones con espacio entre ellos
+            children: [
+              ElevatedButton(
+                onPressed:
+                    _showOfficialRoute, // Función que muestra la ruta oficial
+                child: Text("Mostrar Ruta Oficial"),
+              ),
+              ElevatedButton(
+                onPressed: () => _showRouteSelectionMenu(
+                    _allCompletedRoutesWithIds), // Función que muestra el menú para seleccionar ruta
+                child: Text("Seleccionar Ruta Official"),
+              ),
+            ],
           ),
         ),
       ),
