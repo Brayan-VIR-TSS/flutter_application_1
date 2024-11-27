@@ -160,8 +160,22 @@ class _UserPageState extends State<UserPage> {
     final response = await http.get(Uri.parse(url));
     final Map<String, dynamic> data = json.decode(response.body);
 
-    if (data['status'] == 'OK') {
+    /*if (data['status'] == 'OK') {
       // Obtener las coordenadas de la ruta
+      List<LatLng> route = [];
+      for (var step in data['routes'][0]['legs'][0]['steps']) {
+        var polyline = step['polyline']['points'];
+        route.addAll(_decodePolyline(polyline));
+      }*/
+
+    if (data['status'] == 'OK') {
+      // Limpiar la polilínea anterior antes de agregar una nueva
+      setState(() {
+        _polylines.removeWhere((polyline) =>
+            polyline.polylineId.value == 'userToTransportistaRoute');
+      });
+
+      // Obtener las coordenadas de la nueva ruta
       List<LatLng> route = [];
       for (var step in data['routes'][0]['legs'][0]['steps']) {
         var polyline = step['polyline']['points'];
