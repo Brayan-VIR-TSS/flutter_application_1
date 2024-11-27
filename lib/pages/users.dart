@@ -54,7 +54,7 @@ class _UserPageState extends State<UserPage> {
         return []; // Si no hay rutas, retornamos una lista vacía
       }
 
-      // Tomamos la primera ruta oficial (puedes adaptarlo si hay varias)
+      // Tomamos la primera ruta oficial (se puede adaptar si hay mas¿'? )
       final routeData = snapshot.docs.first.data();
       List<dynamic> locations = routeData['locations'];
       return locations
@@ -67,10 +67,8 @@ class _UserPageState extends State<UserPage> {
   Future<void> _getUserLocation() async {
     // Usamos Geolocator para obtener la ubicación con la API
     LocationSettings locationSettings = LocationSettings(
-      accuracy:
-          LocationAccuracy.high, // Aquí defines la precisión que necesitas
-      distanceFilter:
-          10, // Puedes definir una distancia mínima (en metros) para recibir una actualización
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Metros
     );
 
     try {
@@ -281,7 +279,7 @@ class _UserPageState extends State<UserPage> {
 
           // Dibujar la ruta entre el usuario y el transportista (polilínea verde)
           _drawRoute(_userLocation, transportistaPosition);
-          // Mostrar la ruta oficial si lo necesitas
+          // Mostrar la ruta oficial
           _showOfficialRoute(transportistaId);
         },
       ));
@@ -337,11 +335,11 @@ class _UserPageState extends State<UserPage> {
               (location) => LatLng(location['latitude'], location['longitude']))
           .toList();
 
-      // Dibujamos la polilínea para mostrar la ruta en el mapa
+      // se dibuja la polilínea para mostrar la ruta en el mapa
       setState(() {
         _polylines.add(Polyline(
           polylineId: PolylineId('officialRoute_$transportistaId'),
-          color: Colors.blue,
+          color: const Color.fromARGB(255, 12, 13, 14),
           width: 5,
           points: route,
         ));
@@ -360,7 +358,8 @@ class _UserPageState extends State<UserPage> {
       builder: (context) {
         return Container(
           padding: EdgeInsets.all(16),
-          height: 150, // Altura fija del BottomSheet
+          height:
+              150, // Altura fija del BottomSheet, para que no cubra toda la pantalla
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -370,7 +369,6 @@ class _UserPageState extends State<UserPage> {
               Text('Patente: $vehiclePlate'),
               Text('Tiempo estimado: $estimatedTime'),
               Text('Distancia: $distance'),
-              // Puedes agregar más detalles o funcionalidades aquí
             ],
           ),
         );
@@ -399,7 +397,6 @@ class _UserPageState extends State<UserPage> {
                 // Obtiene los transportistas
                 var transportistas = snapshot.data!.docs;
 
-                // Asegúrate de que los marcadores se construyan solo una vez
                 if (!_isLoading) {
                   _buildMarkers(transportistas);
                 }
@@ -417,9 +414,7 @@ class _UserPageState extends State<UserPage> {
                   polylines: _polylines,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
-                  onTap: (LatLng position) {
-                    // Puedes agregar lógica si quieres cerrar el BottomSheet cuando se toque fuera del marcador
-                  },
+                  onTap: (LatLng position) {},
                 );
               },
             ),

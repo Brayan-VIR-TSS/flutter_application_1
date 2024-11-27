@@ -125,8 +125,8 @@ class _ClientsPageState extends State<ClientsPage> {
   void _startTrip() {
     setState(() {
       isOnTrip = true;
-      tripStartTime = Timestamp.now(); // Guardamos la hora de inicio
-      tripLocations = []; // Inicializamos el historial de ubicaciones
+      tripStartTime = Timestamp.now(); // Guarda la hora de inicio
+      tripLocations = []; // Inicializa el historial de ubicaciones
     });
 
     // Crear un ID único para el recorrido
@@ -185,7 +185,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
     setState(() {
       _markers
-          .clear(); // Limpiar los marcadores del mapa cuando dejen de compartir la ubicación
+          .clear(); // Limpiar los marcadores del mapa cuando se deje de compartir la ubicación
     });
   }
 
@@ -225,7 +225,7 @@ class _ClientsPageState extends State<ClientsPage> {
           }
         });
 
-        // Actualizar la ubicación en Firestore
+        // Actualiza la ubicación en Firestore
         FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
           'locations': FieldValue.arrayUnion([
             {
@@ -236,7 +236,7 @@ class _ClientsPageState extends State<ClientsPage> {
           'lastUpdated': Timestamp.now(),
         });
 
-        // Actualizar la última ubicación y hora
+        // Actualiza la última ubicación y hora
         lastLocation = newLocation;
         lastUpdateTime = DateTime.now();
 
@@ -254,7 +254,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
   bool _shouldUpdateLocation(LatLng newLocation) {
     if (lastLocation == null || lastUpdateTime == null) {
-      return true; // Siempre actualizar si no hay ubicación previa
+      return true; // actualiza si no hay ubicación previa
     }
 
     // Verificar si se ha movido más de 5 metros desde la última ubicación
@@ -315,7 +315,7 @@ class _ClientsPageState extends State<ClientsPage> {
         // Cerrar sesión en Firebase
         await _auth.signOut();
 
-        // Redirigir al login utilizando la ruta configurada       
+        // Redirigir al login utilizando la ruta configurada
         Navigator.pushReplacementNamed(context, '/login');
       } catch (e) {
         // Si ocurre un error, mostrar un mensaje de error
@@ -374,7 +374,7 @@ class _ClientsPageState extends State<ClientsPage> {
                     backgroundColor: isOnTrip ? Colors.red : Colors.green,
                   ),
                 ),
-                // Botón para ver el recorrido de la ruta
+                // Botón para ver el recorrido de las rutas hechas
                 ElevatedButton(
                   onPressed: () {
                     Navigator.push(

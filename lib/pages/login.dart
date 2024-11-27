@@ -21,7 +21,6 @@ class _LoginPageState extends State<LoginPage> {
     PermissionStatus permissionStatus = await Permission.location.request();
 
     if (!permissionStatus.isGranted) {
-      // Mostrar un diálogo o snackbar informando al usuario que la app necesita este permiso
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -40,7 +39,7 @@ class _LoginPageState extends State<LoginPage> {
         password: _passwordController.text.trim(),
       );
 
-      // Solicitar permiso de ubicación después de un inicio de sesión exitoso
+      // Solicitar permiso de ubicación después del inicio de sesión exitoso
       await _requestLocationPermission();
 
       // Obtener el ID del usuario
