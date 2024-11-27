@@ -139,14 +139,80 @@ class _UserPageState extends State<UserPage> {
 
     if (data['status'] == 'OK') {
       final String duration =
-          data['rows'][0]['elements'][0]['duration']['text'];
+          data['rows'][0]['elements'][0]['duration']['text']; // Tiempo estimado
       final String distance =
-          data['rows'][0]['elements'][0]['distance']['text'];
+          data['rows'][0]['elements'][0]['distance']['text']; // Distancia
 
       return {'duration': duration, 'distance': distance};
     } else {
       return {'duration': 'Desconocido', 'distance': 'Desconocido'};
     }
+  }
+
+  Future<void> _drawRoute(
+      LatLng userLocation, LatLng transportistaLocation) async {
+    final String origin = '${userLocation.latitude},${userLocation.longitude}';
+    final String destination =
+        '${transportistaLocation.latitude},${transportistaLocation.longitude}';
+    final String url =
+        'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&key=$_googleApiKey';
+
+    final response = await http.get(Uri.parse(url));
+    final Map<String, dynamic> data = json.decode(response.body);
+
+    if (data['status'] == 'OK') {
+      // Obtener las coordenadas de la ruta
+      List<LatLng> route = [];
+      for (var step in data['routes'][0]['legs'][0]['steps']) {
+        var polyline = step['polyline']['points'];
+        route.addAll(_decodePolyline(polyline));
+      }
+
+      // Dibujar la polilínea verde en el mapa
+      setState(() {
+        _polylines.add(Polyline(
+          polylineId: PolylineId('userToTransportistaRoute'),
+          color: Colors.green, // Línea verde
+          width: 5,
+          points: route,
+        ));
+      });
+    } else {
+      print('Error al obtener la ruta: ${data['status']}');
+    }
+  }
+
+// Función para decodificar la polilínea
+  List<LatLng> _decodePolyline(String encoded) {
+    List<LatLng> polyline = [];
+    int index = 0;
+    int len = encoded.length;
+    int lat = 0;
+    int lng = 0;
+
+    while (index < len) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dLat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dLat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dLng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dLng;
+
+      polyline.add(LatLng(lat / 1E5, lng / 1E5));
+    }
+    return polyline;
   }
 
   Future<void> _buildMarkers(List<DocumentSnapshot> transportistas) async {
@@ -178,11 +244,30 @@ class _UserPageState extends State<UserPage> {
         position: transportistaPosition,
         infoWindow: InfoWindow(
           title: 'Transportista $name $lastname',
-          snippet:
-              'Patente: $vehiclePlate\nTiempo estimado: $estimatedTime\nDistancia: $distance',
+          snippet: 'Patente: $vehiclePlate\n'
+              'Tiempo estimado: $estimatedTime\n'
+              'Distancia: $distance',
         ),
         onTap: () async {
-          // Cuando se haga clic en el marcador, obtener la ruta oficial
+          // Calculamos el tiempo estimado y la distancia cuando se toca el marcador
+          Map<String, String> timeAndDistance =
+              await _getEstimatedTimeAndDistance(
+                  _userLocation, transportistaPosition);
+          String estimatedTime = timeAndDistance['duration'] ?? 'Desconocido';
+          String distance = timeAndDistance['distance'] ?? 'Desconocido';
+
+          // Mostrar el BottomSheet con los detalles del transportista
+          _showTransportistaDetails(
+              name, lastname, vehiclePlate, estimatedTime, distance);
+
+          // Actualizamos la InfoWindow con el tiempo estimado y la distancia
+          setState(() {
+            // Actualizamos la UI si es necesario
+          });
+
+          // Dibujar la ruta entre el usuario y el transportista (polilínea verde)
+          _drawRoute(_userLocation, transportistaPosition);
+          // Mostrar la ruta oficial si lo necesitas
           _showOfficialRoute(transportistaId);
         },
       ));
@@ -253,6 +338,32 @@ class _UserPageState extends State<UserPage> {
     }
   }
 
+  void _showTransportistaDetails(String name, String lastname,
+      String vehiclePlate, String estimatedTime, String distance) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Permite controlar la altura
+      builder: (context) {
+        return Container(
+          padding: EdgeInsets.all(16),
+          height: 150, // Altura fija del BottomSheet
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Transportista: $name $lastname',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('Patente: $vehiclePlate'),
+              Text('Tiempo estimado: $estimatedTime'),
+              Text('Distancia: $distance'),
+              // Puedes agregar más detalles o funcionalidades aquí
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -271,9 +382,13 @@ class _UserPageState extends State<UserPage> {
                   return Center(child: CircularProgressIndicator());
                 }
 
+                // Obtiene los transportistas
                 var transportistas = snapshot.data!.docs;
 
-                _buildMarkers(transportistas);
+                // Asegúrate de que los marcadores se construyan solo una vez
+                if (!_isLoading) {
+                  _buildMarkers(transportistas);
+                }
 
                 return GoogleMap(
                   initialCameraPosition: CameraPosition(
@@ -288,6 +403,9 @@ class _UserPageState extends State<UserPage> {
                   polylines: _polylines,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
+                  onTap: (LatLng position) {
+                    // Puedes agregar lógica si quieres cerrar el BottomSheet cuando se toque fuera del marcador
+                  },
                 );
               },
             ),

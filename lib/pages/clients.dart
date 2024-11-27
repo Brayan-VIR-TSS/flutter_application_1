@@ -315,7 +315,7 @@ class _ClientsPageState extends State<ClientsPage> {
         // Cerrar sesión en Firebase
         await _auth.signOut();
 
-        // Redirigir al login utilizando la ruta configurada
+        // Redirigir al login utilizando la ruta configurada       
         Navigator.pushReplacementNamed(context, '/login');
       } catch (e) {
         // Si ocurre un error, mostrar un mensaje de error
