@@ -63,11 +63,13 @@ class _RoutePageState extends State<RoutePage> {
 
           // Si el recorrido está en curso (isSharing: true)
           if (isSharing && !foundCurrentRoute) {
-            setState(() {
-              _currentRouteCoordinates.addAll(locations.map((loc) {
-                return LatLng(loc['latitude'], loc['longitude']);
-              }).toList());
-            });
+            if (mounted) {
+              setState(() {
+                _currentRouteCoordinates.addAll(locations.map((loc) {
+                  return LatLng(loc['latitude'], loc['longitude']);
+                }).toList());
+              });
+            }
             foundCurrentRoute = true;
           } else if (!isSharing) {
             List<LatLng> completedRoute = locations.map((loc) {
@@ -75,28 +77,29 @@ class _RoutePageState extends State<RoutePage> {
             }).toList();
 
             // Guardar todas las rutas completadas con su ID
-            setState(() {
-              _allCompletedRoutesWithIds.add({
-                'tripId':
-                    tripId, // Guardamos el ID de la ruta junto con las coordenadas
-                'route': completedRoute,
-                'isOfficial': false, //inicialmente como no oficial
+            if (mounted) {
+              setState(() {
+                _allCompletedRoutesWithIds.add({
+                  'tripId': tripId,
+                  'route': completedRoute,
+                  'isOfficial': false, // Inicialmente como no oficial
+                });
+
+                // Limitar a solo las tres últimas rutas completadas??es redundante??
+                if (_allCompletedRoutesWithIds.length > 3) {
+                  _allCompletedRoutesWithIds
+                      .removeAt(0); // Eliminar la ruta más antigua
+                }
+
+                // Agregar marcadores de inicio y fin
+                _addStartMarker(
+                    locations[0], tripStart, tripId); // Marcador de inicio
+                _addEndMarker(
+                    locations.last, tripEnd, tripId); // Marcador de fin
               });
-
-              // Limitar a solo las tres últimas rutas completadas??es redundante??
-              if (_allCompletedRoutesWithIds.length > 3) {
-                _allCompletedRoutesWithIds
-                    .removeAt(0); // Eliminar la ruta más antigua
-              }
-
-              // Agregar marcadores de inicio y fin
-              _addStartMarker(
-                  locations[0], tripStart, tripId); // Marcador de inicio
-              _addEndMarker(locations.last, tripEnd, tripId); // Marcador de fin
-            });
+            }
           }
         }
-
         // Ahora que tenemos todas las rutas, incluimos las oficiales
         for (var route in _allCompletedRoutesWithIds) {
           // Recuperar la información de si la ruta es oficial
@@ -104,13 +107,15 @@ class _RoutePageState extends State<RoutePage> {
           route['isOfficial'] = isOfficialRoute;
 
           // Añadir la ruta con el color correspondiente
-          _addRoutePolyline(
-            route['route'],
-            isOfficialRoute
-                ? Colors.black
-                : const Color.fromARGB(255, 223, 250, 19),
-            isOfficialRoute: isOfficialRoute,
-          );
+          if (mounted) {
+            _addRoutePolyline(
+              route['route'],
+              isOfficialRoute
+                  ? Colors.black
+                  : const Color.fromARGB(255, 223, 250, 19),
+              isOfficialRoute: isOfficialRoute,
+            );
+          }
         }
 
         if (_currentRouteCoordinates.isNotEmpty) {
@@ -120,16 +125,20 @@ class _RoutePageState extends State<RoutePage> {
           ); // Ruta actual
         }
 
-        setState(() {
-          _isDataLoaded = true;
-        });
+        if (mounted) {
+          setState(() {
+            _isDataLoaded = true;
+          });
+        }
       });
     } catch (e) {
       print("Error al cargar los datos del recorrido: $e");
-      setState(() {
-        _hasError = true;
-        _isDataLoaded = true;
-      });
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isDataLoaded = true;
+        });
+      }
     }
   }
 
@@ -250,9 +259,11 @@ class _RoutePageState extends State<RoutePage> {
         snippet: 'Inicio: $formattedStartDate $formattedStartTime',
       ),
     );
-    setState(() {
-      _markers.add(startMarker);
-    });
+    if (mounted) {
+      setState(() {
+        _markers.add(startMarker);
+      });
+    }
   }
 
   // Función para agregar un marcador de fin con las fechas
@@ -269,9 +280,11 @@ class _RoutePageState extends State<RoutePage> {
         snippet: 'Fin: $formattedEndDate $formattedEndTime',
       ),
     );
-    setState(() {
-      _markers.add(endMarker);
-    });
+    if (mounted) {
+      setState(() {
+        _markers.add(endMarker);
+      });
+    }
   }
 
   // Botón para recargar el mapa
