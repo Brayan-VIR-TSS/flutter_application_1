@@ -328,7 +328,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Actualizamos la ubicación cada 20 segundos si está en un recorrido
+    // Actualizamos la ubicación cada 30 segundos si está en un recorrido
     if (isOnTrip) {
       _updateTripLocation();
     }

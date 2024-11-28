@@ -15,6 +15,7 @@ class UserPage extends StatefulWidget {
 
 class _UserPageState extends State<UserPage> {
   late GoogleMapController mapController;
+  StreamSubscription<Position>? _positionStream;
   LatLng _userLocation = LatLng(0, 0); // Ubicación inicial
   bool _isLoading =
       true; // Flag para mostrar un indicador de carga mientras solicitamos el permiso
@@ -40,7 +41,10 @@ class _UserPageState extends State<UserPage> {
         .snapshots();
     _getUserLocation(); // Obtener ubicación del usuario al cargar la pantalla
     //_loadOfficialRoute(); // Cargar la ruta oficial
+     _startListeningToLocationChanges();
   }
+
+  
 
   // Función para obtener la ruta oficial en tiempo real
   Stream<List<LatLng>> _getOfficialRouteStream() {
@@ -146,6 +150,19 @@ class _UserPageState extends State<UserPage> {
       return {'duration': 'Desconocido', 'distance': 'Desconocido'};
     }
   }
+
+  Future<void> _updatePolylines() async {
+  if (transportistaMarkers.isNotEmpty) {
+    for (var marker in transportistaMarkers) {
+      // Obtén la posición del transportista desde sus marcadores
+      LatLng transportistaLocation = marker.position;
+
+      // Dibuja la ruta entre el usuario y cada transportista
+      await _drawRoute(_userLocation, transportistaLocation);
+    }
+  }
+}
+
 
   Future<void> _drawRoute(
       LatLng userLocation, LatLng transportistaLocation) async {
@@ -290,6 +307,20 @@ class _UserPageState extends State<UserPage> {
     });
   }
 
+  void _startListeningToLocationChanges() {
+  _positionStream = Geolocator.getPositionStream(
+    locationSettings: LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Cada 10 metros
+    ),
+  ).listen((Position position) {
+    setState(() {
+      _userLocation = LatLng(position.latitude, position.longitude);
+    });
+    // Vuelve a dibujar la ruta con la nueva ubicación
+    _updatePolylines();
+  });
+}
   void _logout() async {
     try {
       // Obtén el ID del usuario actual
@@ -397,9 +428,11 @@ class _UserPageState extends State<UserPage> {
                 // Obtiene los transportistas
                 var transportistas = snapshot.data!.docs;
 
-                if (!_isLoading) {
+                /*if (!_isLoading) {
                   _buildMarkers(transportistas);
-                }
+                }*/
+                 // Actualiza los marcadores y polilíneas cada vez que cambian los datos
+                _buildMarkers(transportistas);
 
                 return GoogleMap(
                   initialCameraPosition: CameraPosition(
