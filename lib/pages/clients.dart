@@ -4,10 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'route.dart'; // Página de la ruta
-import '../widgets/logout_button.dart'; // Cerrar cuenta??
 import 'dart:async';
 import 'dart:math';
-import 'login.dart';
 
 class ClientsPage extends StatefulWidget {
   @override
@@ -37,18 +35,6 @@ class _ClientsPageState extends State<ClientsPage> {
 
   final int moveThreshold = 5; // Distancia mínima para enviar (en metros)
   final int timeThreshold = 30; // Intervalo de tiempo (en segundos)
-
-  @override
-  void dispose() {
-    // Finaliza el recorrido si la aplicación se cierra
-    if (isOnTrip) {
-      _endTrip();
-    }
-
-    // Cancela cualquier timer activo
-    _locationUpdateTimer?.cancel();
-    super.dispose();
-  }
 
   @override
   void initState() {
@@ -189,6 +175,18 @@ class _ClientsPageState extends State<ClientsPage> {
     });
   }
 
+  @override
+  void dispose() {
+    // Finaliza el recorrido si la aplicación se cierra
+    if (isOnTrip) {
+      _endTrip();
+    }
+
+    // Cancela cualquier timer activo
+    _locationUpdateTimer?.cancel();
+    super.dispose();
+  }
+
   // Función para actualizar el historial de ubicaciones en tiempo real
   void _updateTripLocation() async {
     if (isOnTrip) {
@@ -204,50 +202,64 @@ class _ClientsPageState extends State<ClientsPage> {
       // Verifica si hay movimiento
       // Si la ubicación ha cambiado más de 5 metros o ha pasado 30 segundos
       if (_shouldUpdateLocation(newLocation)) {
-        setState(() {
-          _currentLocation = newLocation;
-          tripLocations.add(newLocation);
+        if (mounted) {
+          // Verifica si el widget está montado antes de llamar a setState()
+          setState(() {
+            _currentLocation = newLocation;
+            tripLocations.add(newLocation);
 
-          // Actualizar el marcador en el mapa
-          _markers.removeWhere(
-              (marker) => marker.markerId.value == 'transportista');
-          _markers.add(Marker(
-            markerId: MarkerId('transportista'),
-            position: newLocation,
-            infoWindow: InfoWindow(title: "Tu ubicación"),
-            //icon: BitmapDescriptor.defaultMarker,
-          ));
+            // Actualizar el marcador en el mapa
+            _markers.removeWhere(
+                (marker) => marker.markerId.value == 'transportista');
+            _markers.add(Marker(
+              markerId: MarkerId('transportista'),
+              position: newLocation,
+              infoWindow: InfoWindow(title: "Tu ubicación"),
+              //icon: BitmapDescriptor.defaultMarker,
+            ));
 
-          // Actualiza la cámara para seguir al transportista
-          if (mapController != null) {
-            mapController
-                ?.animateCamera(CameraUpdate.newLatLngZoom(newLocation, 16));
-          }
-        });
-
-        // Actualiza la ubicación en Firestore
-        FirebaseFirestore.instance.collection('recorridos').doc(tripId).update({
-          'locations': FieldValue.arrayUnion([
-            {
-              'latitude': newLocation.latitude,
-              'longitude': newLocation.longitude
+            // Actualiza la cámara para seguir al transportista
+            if (mapController != null) {
+              mapController
+                  ?.animateCamera(CameraUpdate.newLatLngZoom(newLocation, 16));
             }
-          ]),
-          'lastUpdated': Timestamp.now(),
-        });
+          });
 
-        // Actualiza la última ubicación y hora
-        lastLocation = newLocation;
-        lastUpdateTime = DateTime.now();
+          // Actualiza la ubicación en Firestore
+          FirebaseFirestore.instance
+              .collection('recorridos')
+              .doc(tripId)
+              .update({
+            'locations': FieldValue.arrayUnion([
+              {
+                'latitude': newLocation.latitude,
+                'longitude': newLocation.longitude
+              }
+            ]),
+            'lastUpdated': Timestamp.now(),
+          });
 
+          // Actualiza la última ubicación y hora
+          lastLocation = newLocation;
+          lastUpdateTime = DateTime.now();
+        }
         print('Ubicación actualizada: $newLocation');
       } else {
         // Reiniciar el temporizador cada vez que no se detecte movimiento
         print('No se detectó movimiento, reiniciando temporizador...');
         _locationUpdateTimer?.cancel();
         _locationUpdateTimer = Timer.periodic(Duration(seconds: 30), (timer) {
-          _updateTripLocation();
+          if (mounted) {
+            // Verifica si el widget está montado
+            _updateTripLocation();
+          }
         });
+        @override
+        void dispose() {
+          // Cancela el temporizador al salir de la pantalla
+          _locationUpdateTimer?.cancel();
+          super.dispose();
+        }
       }
     }
   }

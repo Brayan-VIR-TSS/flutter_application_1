@@ -317,6 +317,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 },
               ),
               // Teléfono
+              // Teléfono
               TextFormField(
                 controller: phoneController,
                 decoration: InputDecoration(
@@ -333,24 +334,23 @@ class _RegisterPageState extends State<RegisterPage> {
 
                     // Formateamos el texto para que tenga el formato 9 9999 9999
                     if (text.length == 2) {
-                      text = '${text.substring(0, 1)} ${text.substring(1)}';
+                      text =
+                          '${text.substring(0, 1)} ${text.substring(1)}'; // 9 9
                     } else if (text.length == 6) {
-                      // Aseguramos que el substring sea válido
-                      if (text.length >= 5) {
-                        text =
-                            '${text.substring(0, 1)} ${text.substring(1, 5)} ${text.substring(5)}';
-                      }
+                      text =
+                          '${text.substring(0, 1)} ${text.substring(1, 5)} ${text.substring(5)}'; // 9 9999 9
                     } else if (text.length > 6) {
-                      // Aseguramos que el substring sea válido
+                      // Aquí verificamos que el substring no intente acceder fuera del rango
                       if (text.length >= 5) {
                         text =
-                            '${text.substring(0, 1)} ${text.substring(1, 5)} ${text.substring(5, 9)}';
+                            '${text.substring(0, 1)} ${text.substring(1, 5)} ${text.substring(5, text.length)}'; // 9 9999 9999
                       }
                     }
 
                     // Aseguramos de que el cursor esté al final del texto
                     int cursorPosition = text.length;
 
+                    // Retorna el nuevo valor de texto y posición del cursor
                     return TextEditingValue(
                       text: text,
                       selection:

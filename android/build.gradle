@@ -9,8 +9,12 @@ rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
     project.evaluationDependsOn(":app")
-}
 
+    // Agregar esta sección para habilitar las advertencias de APIs obsoletas
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:deprecation"
+    }
+}
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir

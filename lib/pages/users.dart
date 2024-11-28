@@ -41,10 +41,8 @@ class _UserPageState extends State<UserPage> {
         .snapshots();
     _getUserLocation(); // Obtener ubicación del usuario al cargar la pantalla
     //_loadOfficialRoute(); // Cargar la ruta oficial
-     _startListeningToLocationChanges();
+    _startListeningToLocationChanges();
   }
-
-  
 
   // Función para obtener la ruta oficial en tiempo real
   Stream<List<LatLng>> _getOfficialRouteStream() {
@@ -79,10 +77,12 @@ class _UserPageState extends State<UserPage> {
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: locationSettings,
       );
-      setState(() {
-        _userLocation = LatLng(position.latitude, position.longitude);
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _userLocation = LatLng(position.latitude, position.longitude);
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print('Error al obtener la ubicación: $e');
     }
@@ -152,17 +152,16 @@ class _UserPageState extends State<UserPage> {
   }
 
   Future<void> _updatePolylines() async {
-  if (transportistaMarkers.isNotEmpty) {
-    for (var marker in transportistaMarkers) {
-      // Obtén la posición del transportista desde sus marcadores
-      LatLng transportistaLocation = marker.position;
+    if (transportistaMarkers.isNotEmpty) {
+      for (var marker in transportistaMarkers) {
+        // Obtén la posición del transportista desde sus marcadores
+        LatLng transportistaLocation = marker.position;
 
-      // Dibuja la ruta entre el usuario y cada transportista
-      await _drawRoute(_userLocation, transportistaLocation);
+        // Dibuja la ruta entre el usuario y cada transportista
+        await _drawRoute(_userLocation, transportistaLocation);
+      }
     }
   }
-}
-
 
   Future<void> _drawRoute(
       LatLng userLocation, LatLng transportistaLocation) async {
@@ -198,14 +197,16 @@ class _UserPageState extends State<UserPage> {
       }
 
       // Dibujar la polilínea verde en el mapa
-      setState(() {
-        _polylines.add(Polyline(
-          polylineId: PolylineId('userToTransportistaRoute'),
-          color: Colors.green, // Línea verde
-          width: 5,
-          points: route,
-        ));
-      });
+      if (mounted) {
+        setState(() {
+          _polylines.add(Polyline(
+            polylineId: PolylineId('userToTransportistaRoute'),
+            color: Colors.green,
+            width: 5,
+            points: route,
+          ));
+        });
+      }
     } else {
       print('Error al obtener la ruta: ${data['status']}');
     }
@@ -308,19 +309,20 @@ class _UserPageState extends State<UserPage> {
   }
 
   void _startListeningToLocationChanges() {
-  _positionStream = Geolocator.getPositionStream(
-    locationSettings: LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Cada 10 metros
-    ),
-  ).listen((Position position) {
-    setState(() {
-      _userLocation = LatLng(position.latitude, position.longitude);
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Cada 10 metros
+      ),
+    ).listen((Position position) {
+      setState(() {
+        _userLocation = LatLng(position.latitude, position.longitude);
+      });
+      // Vuelve a dibujar la ruta con la nueva ubicación
+      _updatePolylines();
     });
-    // Vuelve a dibujar la ruta con la nueva ubicación
-    _updatePolylines();
-  });
-}
+  }
+
   void _logout() async {
     try {
       // Obtén el ID del usuario actual
@@ -334,13 +336,19 @@ class _UserPageState extends State<UserPage> {
       // Cierra la sesión del usuario
       await FirebaseAuth.instance.signOut();
 
-      // Redirige al usuario a la página de login
-      Navigator.pushReplacementNamed(context, '/login');
+      // Asegúrate de que el widget está montado antes de navegar
+      if (mounted) {
+        // Redirige al usuario a la página de login
+        Navigator.pushReplacementNamed(context, '/login');
+      }
     } catch (e) {
       // Muestra un mensaje de error si algo sale mal
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cerrar sesión: ${e.toString()}')),
-      );
+      if (mounted) {
+        // Verifica si el widget sigue montado antes de mostrar el error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cerrar sesión: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -408,10 +416,17 @@ class _UserPageState extends State<UserPage> {
   }
 
   @override
+  void dispose() {
+    // Cancelar la suscripción cuando el widget se destruya
+    _positionStream?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Transportes Activos y Ruta Oficial'),
+        title: Text('Transportes Activos y Rutas Oficiales'),
         actions: [
           LogoutButton(onLogout: _logout), // Botón de cerrar sesión
         ],
@@ -428,12 +443,11 @@ class _UserPageState extends State<UserPage> {
                 // Obtiene los transportistas
                 var transportistas = snapshot.data!.docs;
 
-                /*if (!_isLoading) {
+                // Usamos addPostFrameCallback para actualizar los marcadores
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  // Actualiza los marcadores y polilíneas después de que se construya el widget
                   _buildMarkers(transportistas);
-                }*/
-                 // Actualiza los marcadores y polilíneas cada vez que cambian los datos
-                _buildMarkers(transportistas);
-
+                });
                 return GoogleMap(
                   initialCameraPosition: CameraPosition(
                     target: _userLocation,

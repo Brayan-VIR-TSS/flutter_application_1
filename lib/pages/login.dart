@@ -17,17 +17,21 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<void> _requestLocationPermission() async {
+  // Solicitar permiso de ubicación
+  Future<bool> _requestLocationPermission() async {
     PermissionStatus permissionStatus = await Permission.location.request();
 
-    if (!permissionStatus.isGranted) {
+    if (permissionStatus.isGranted) {
+      return true; // Permiso concedido
+    } else {
+      // Si no se concede el permiso, muestra un mensaje y retorna false
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
               'El permiso de ubicación es necesario para utilizar esta aplicación.'),
         ),
       );
-      // Opcional: Redirigir al usuario a la configuración de permisos
+      return false;
     }
   }
 
@@ -40,7 +44,10 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       // Solicitar permiso de ubicación después del inicio de sesión exitoso
-      await _requestLocationPermission();
+      bool isLocationGranted = await _requestLocationPermission();
+
+      // Si el permiso no es concedido, no redirigir
+      if (!isLocationGranted) return;
 
       // Obtener el ID del usuario
       String userId = userCredential.user!.uid;
