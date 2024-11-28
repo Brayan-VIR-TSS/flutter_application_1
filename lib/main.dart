@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart'; // Paquete para la conectividad
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'pages/login.dart'; // Asegúrate de tener la página de login
-import 'pages/create.dart'; // Asegúrate de tener la página de crear cuenta
+import 'pages/login.dart'; // página de login
+import 'pages/create.dart'; // página de crear cuenta
 import 'pages/clients.dart'; // Página de clientes (transportistas)
 import 'pages/users.dart'; //Pagina de pasajeros (usuarios)
 import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth

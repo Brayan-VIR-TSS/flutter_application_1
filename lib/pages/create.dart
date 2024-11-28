@@ -451,7 +451,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   if (age == 0) {
                     return 'La edad no puede ser 0';
                   }
-                  // Validar que la edad esté dentro de un rango razonable (0 a 120 años)
+                  // Validar que la edad esté dentro de un rango razonable (0 a 99 años)
                   if (age < 0 || age > 120) {
                     return 'Por favor ingresa una edad válida entre 0 y 120 años';
                   }
@@ -509,7 +509,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       return 'Por favor ingresa la placa del vehículo';
                     }
 
-                    // Validar que la placa tenga el formato correcto (puedes añadir otras validaciones si lo necesitas)
+                    // Validar que la placa tenga el formato correcto
                     String plateWithoutSpaces = value.replaceAll(
                         ' ', ''); // Eliminamos los espacios para validar
                     if (plateWithoutSpaces.length != 8) {
@@ -525,7 +525,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   controller: vehicleTypeController,
                   decoration: InputDecoration(
                     labelText: 'Tipo de vehículo',
-                    hintText: 'Micro/Moto/Camion/etc',
+                    hintText: 'Microbus/Motocicleta/Camion/Ambulancia/etc',
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -581,7 +581,7 @@ class UpperCaseTextFormatter extends TextInputFormatter {
   }
 }
 
-// Formateador para agregar guiones cada 2 caracteres
+// Formateador para agregar guiones/espacios cada 2 caracteres
 class VehiclePlateInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
